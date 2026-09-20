@@ -5,11 +5,23 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy all source first so editable install can find the package
-COPY services/api services/api
-COPY db db
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    "fastapi>=0.115.0" \
+    "uvicorn[standard]>=0.30.0" \
+    "pydantic-settings>=2.5.0" \
+    "sqlalchemy>=2.0.35" \
+    "psycopg[binary]>=3.2.0" \
+    "redis>=5.1.0" \
+    "alembic>=1.13.0" \
+    "httpx>=0.27.0"
 
-RUN pip install --no-cache-dir -e services/api
+# Copy application code
+COPY services services
+COPY db db
+COPY tests tests
+
+ENV PYTHONPATH=/app
 
 COPY docker/api-entrypoint.sh /api-entrypoint.sh
 RUN chmod +x /api-entrypoint.sh
