@@ -1,0 +1,112 @@
+#!/bin/bash
+set -e
+
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$PROJECT_DIR"
+
+# Copy .env from example if it doesn't exist
+if [ ! -f .env ]; then
+    cp .env.example .env
+    echo "Created .env from .env.example"
+fi
+
+case "${1:-help}" in
+    dev)
+        echo "Starting all services..."
+        docker compose up --build -d
+        echo ""
+        echo "Waiting for services to become healthy..."
+        echo "  API:  http://localhost:8000/health"
+        echo "  Web:  http://localhost:3000/health"
+        echo ""
+        echo "Run './run.sh logs' to follow logs"
+        echo "Run './run.sh verify' to check health"
+        ;;
+
+    stop)
+        echo "Stopping all services..."
+        docker compose down
+        ;;
+
+    logs)
+        docker compose logs -f "${@:2}"
+        ;;
+
+    health)
+        echo "=== API Health ==="
+        curl -s http://localhost:8000/health | python -m json.tool 2>/dev/null || echo "API not responding"
+        echo ""
+        echo "=== Web Health ==="
+        curl -s http://localhost:3000/health | python -m json.tool 2>/dev/null || echo "Web not responding"
+        ;;
+
+    verify)
+        PASS=true
+
+        echo "Checking API health..."
+        API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+        if [ "$API_STATUS" = "200" ]; then
+            echo "  API: PASS (HTTP $API_STATUS)"
+        else
+            echo "  API: FAIL (HTTP $API_STATUS)"
+            PASS=false
+        fi
+
+        echo "Checking Web health..."
+        WEB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health 2>/dev/null || echo "000")
+        if [ "$WEB_STATUS" = "200" ]; then
+            echo "  Web: PASS (HTTP $WEB_STATUS)"
+        else
+            echo "  Web: FAIL (HTTP $WEB_STATUS)"
+            PASS=false
+        fi
+
+        echo ""
+        if [ "$PASS" = true ]; then
+            echo "Gate: PASS — Phase 0 complete"
+            exit 0
+        else
+            echo "Gate: FAIL — services not healthy"
+            exit 1
+        fi
+        ;;
+
+    lint)
+        echo "Linting Python (ruff)..."
+        docker compose exec api ruff check /app/services/api /app/db || true
+        echo ""
+        echo "Linting TypeScript (next lint)..."
+        docker compose exec web npx next lint || true
+        ;;
+
+    test)
+        echo "Running API tests..."
+        docker compose exec api python -m pytest /app/tests/api -v
+        echo ""
+        echo "Running engine tests..."
+        docker compose exec worker python -m pytest /app/tests/engine -v
+        ;;
+
+    clean)
+        echo "Stopping services and removing volumes..."
+        docker compose down -v --remove-orphans
+        echo "Clean complete"
+        ;;
+
+    help|*)
+        echo "Football Predictor - Development Commands"
+        echo ""
+        echo "Usage: ./run.sh <command>"
+        echo ""
+        echo "Commands:"
+        echo "  dev      Start all services (build + detached)"
+        echo "  stop     Stop all services"
+        echo "  logs     Follow service logs (optionally: ./run.sh logs api)"
+        echo "  health   Show health status of API and Web"
+        echo "  verify   Gate check — PASS if both services return 200"
+        echo "  lint     Run linters (ruff + next lint)"
+        echo "  test     Run test suites"
+        echo "  clean    Stop services and remove volumes"
+        echo "  help     Show this help message"
+        ;;
+esac

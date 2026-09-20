@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY services/engine/pyproject.toml services/engine/pyproject.toml
+RUN pip install --no-cache-dir -e services/engine
+
+COPY db/models.py db/models.py
+COPY db/__init__.py db/__init__.py
+COPY services/engine services/engine
+
+CMD ["python", "-c", "import time; print('Worker ready'); [time.sleep(60) for _ in iter(int, 1)]"]

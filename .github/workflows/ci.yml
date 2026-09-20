@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: predictor
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: football_predictor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U predictor"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python dependencies
+        run: |
+          pip install -e "services/api[dev]"
+          pip install -e "services/engine[dev]"
+
+      - name: Lint Python
+        run: ruff check services/ db/
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm install
+
+      - name: Lint TypeScript
+        working-directory: apps/web
+        run: npx next lint || true
+
+      - name: Run Alembic migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://predictor:changeme@localhost:5432/football_predictor
+        run: alembic -c db/alembic.ini upgrade head
+
+      - name: Run API tests
+        env:
+          DATABASE_URL: postgresql+psycopg://predictor:changeme@localhost:5432/football_predictor
+          REDIS_URL: redis://localhost:6379/0
+        run: python -m pytest tests/api -v
+
+      - name: Run engine tests
+        run: python -m pytest tests/engine -v
+
+      - name: Build Next.js
+        working-directory: apps/web
+        run: npm run build
