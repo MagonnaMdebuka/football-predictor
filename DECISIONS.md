@@ -35,3 +35,15 @@ Use Tailwind CSS v4 via PostCSS plugin for styling. Tailwind v4 simplifies confi
 **Status:** Accepted
 
 Use multi-stage Docker builds for the web app to minimise image size. API uses single-stage with slim base image since Python doesn't benefit as much from multi-stage.
+
+## ADR-007: Click for CLI Commands
+**Date:** 21/09/2026
+**Status:** Accepted
+
+Use Click for ingest CLI commands (csv-backfill, fixtures-sync, seed, verify-ingest, aliases). Click provides composable commands, automatic help generation, and parameter validation with minimal boilerplate. Preferred over argparse for its decorator-based API and over Typer for fewer dependencies.
+
+## ADR-008: rapidfuzz for Team Alias Resolution
+**Date:** 21/09/2026
+**Status:** Accepted
+
+Use rapidfuzz (not fuzzywuzzy or thefuzz) for fuzzy string matching in team alias resolution. rapidfuzz is MIT-licensed, implemented in C++, and 10-100x faster than fuzzywuzzy. Auto-accept matches with score >= 92 and >= 3-point gap to the next candidate; flag ambiguous matches for manual review.

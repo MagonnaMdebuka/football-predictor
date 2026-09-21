@@ -47,6 +47,9 @@ coverage/
 # Alembic
 db/migrations/versions/__pycache__/
 
+# Raw data cache
+data/raw/
+
 # Misc
 *.log
 *.pid

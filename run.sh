@@ -87,6 +87,41 @@ case "${1:-help}" in
         docker compose exec worker python -m pytest /app/tests/engine -v
         ;;
 
+    seed)
+        echo "Seeding leagues, seasons, and team aliases..."
+        docker compose exec worker python -m services.engine.ingest seed
+        ;;
+
+    csv-backfill)
+        echo "Running CSV backfill..."
+        docker compose exec worker python -m services.engine.ingest csv-backfill
+        ;;
+
+    fixtures-sync)
+        echo "Syncing fixtures from football-data.org..."
+        docker compose exec worker python -m services.engine.ingest fixtures-sync
+        ;;
+
+    verify-ingest)
+        echo "Running ingest verification..."
+        docker compose exec worker python -m services.engine.ingest verify-ingest
+        ;;
+
+    aliases)
+        shift
+        case "${1:-review}" in
+            review)
+                docker compose exec worker python -m services.engine.ingest aliases review
+                ;;
+            confirm)
+                docker compose exec worker python -m services.engine.ingest aliases confirm "${@:2}"
+                ;;
+            *)
+                echo "Usage: ./run.sh aliases [review|confirm --source X --raw-name Y --team Z]"
+                ;;
+        esac
+        ;;
+
     clean)
         echo "Stopping services and removing volumes..."
         docker compose down -v --remove-orphans
@@ -99,14 +134,19 @@ case "${1:-help}" in
         echo "Usage: ./run.sh <command>"
         echo ""
         echo "Commands:"
-        echo "  dev      Start all services (build + detached)"
-        echo "  stop     Stop all services"
-        echo "  logs     Follow service logs (optionally: ./run.sh logs api)"
-        echo "  health   Show health status of API and Web"
-        echo "  verify   Gate check — PASS if both services return 200"
-        echo "  lint     Run linters (ruff + next lint)"
-        echo "  test     Run test suites"
-        echo "  clean    Stop services and remove volumes"
-        echo "  help     Show this help message"
+        echo "  dev            Start all services (build + detached)"
+        echo "  stop           Stop all services"
+        echo "  logs           Follow service logs (optionally: ./run.sh logs api)"
+        echo "  health         Show health status of API and Web"
+        echo "  verify         Gate check — PASS if both services return 200"
+        echo "  lint           Run linters (ruff + next lint)"
+        echo "  test           Run test suites"
+        echo "  seed           Seed leagues, seasons, and team aliases"
+        echo "  csv-backfill   Backfill season CSVs from football-data.co.uk"
+        echo "  fixtures-sync  Sync upcoming fixtures from football-data.org"
+        echo "  verify-ingest  Run quality checks on ingested data"
+        echo "  aliases        Review/confirm team aliases"
+        echo "  clean          Stop services and remove volumes"
+        echo "  help           Show this help message"
         ;;
 esac

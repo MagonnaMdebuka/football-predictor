@@ -1,11 +1,13 @@
 """SQLAlchemy ORM models for the Football Predictor database.
 
-15 tables covering leagues, teams, matches, predictions, and calibration.
+15 tables covering leagues, teams, matches, predictions, and calibration,
+plus match_source_rows for raw ingest data.
 """
 
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Float,
@@ -34,6 +36,11 @@ class League(Base):
     country: Mapped[str] = mapped_column(String(100), nullable=False)
     tier: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    fd_couk_code: Mapped[str | None] = mapped_column(String(10))
+    fd_org_code: Mapped[int | None] = mapped_column(Integer)
+    has_corners: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_cards: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_xg: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     seasons: Mapped[list["Season"]] = relationship(back_populates="league")
@@ -58,7 +65,7 @@ class Team(Base):
     __tablename__ = "teams"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    canonical_name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     country: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
@@ -69,9 +76,11 @@ class TeamAlias(Base):
     __tablename__ = "team_aliases"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), nullable=False)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
     raw_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    score: Mapped[float | None] = mapped_column(Float)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     team: Mapped["Team"] = relationship(back_populates="aliases")
 
@@ -91,28 +100,62 @@ class Match(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     league_id: Mapped[int] = mapped_column(ForeignKey("leagues.id"), nullable=False)
-    season_id: Mapped[int | None] = mapped_column(ForeignKey("seasons.id"))
+    season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), nullable=False)
     home_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), nullable=False)
     away_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), nullable=False)
     referee_id: Mapped[int | None] = mapped_column(ForeignKey("referees.id"))
     kickoff_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    home_goals: Mapped[int | None] = mapped_column(Integer)
-    away_goals: Mapped[int | None] = mapped_column(Integer)
+    ft_home_goals: Mapped[int | None] = mapped_column(Integer)
+    ft_away_goals: Mapped[int | None] = mapped_column(Integer)
+    ht_home_goals: Mapped[int | None] = mapped_column(Integer)
+    ht_away_goals: Mapped[int | None] = mapped_column(Integer)
+    home_shots: Mapped[int | None] = mapped_column(Integer)
+    away_shots: Mapped[int | None] = mapped_column(Integer)
+    home_shots_on_target: Mapped[int | None] = mapped_column(Integer)
+    away_shots_on_target: Mapped[int | None] = mapped_column(Integer)
+    home_fouls: Mapped[int | None] = mapped_column(Integer)
+    away_fouls: Mapped[int | None] = mapped_column(Integer)
+    home_corners: Mapped[int | None] = mapped_column(Integer)
+    away_corners: Mapped[int | None] = mapped_column(Integer)
+    home_yellows: Mapped[int | None] = mapped_column(Integer)
+    away_yellows: Mapped[int | None] = mapped_column(Integer)
+    home_reds: Mapped[int | None] = mapped_column(Integer)
+    away_reds: Mapped[int | None] = mapped_column(Integer)
+    kickoff_time_known: Mapped[bool] = mapped_column(Boolean, default=True)
+    no_crowd: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_match_id: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     league: Mapped["League"] = relationship(back_populates="matches")
     home_team: Mapped["Team"] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])
+    source_rows: Mapped[list["MatchSourceRow"]] = relationship(back_populates="match")
 
     __table_args__ = (
         UniqueConstraint(
             "league_id",
-            "kickoff_utc",
+            "season_id",
             "home_team_id",
             "away_team_id",
             name="uq_match_natural_key",
         ),
+    )
+
+
+class MatchSourceRow(Base):
+    __tablename__ = "match_source_rows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), nullable=False)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    raw: Mapped[dict] = mapped_column(JSON, nullable=False)
+    file_checksum: Mapped[str | None] = mapped_column(String(64))
+
+    match: Mapped["Match"] = relationship(back_populates="source_rows")
+
+    __table_args__ = (
+        UniqueConstraint("match_id", "source", name="uq_match_source_row"),
     )
 
 
@@ -227,8 +270,10 @@ class IngestRun(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
+    job: Mapped[str | None] = mapped_column(String(50))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20), default="running")
-    records_processed: Mapped[int] = mapped_column(Integer, default=0)
+    rows_written: Mapped[int] = mapped_column(Integer, default=0)
+    rows_skipped: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text)
