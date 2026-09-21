@@ -1,7 +1,8 @@
 # Football Predictor — Claude Code Instructions
 
 ## Current Phase
-Phase 1 (Ingest) — in progress.
+Phase 2 (Engine) — Dixon-Coles model complete (64 tests passing).
+Phase 1 (Ingest) — complete (87 tests passing).
 
 ## Project Layout
 ```

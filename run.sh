@@ -87,6 +87,11 @@ case "${1:-help}" in
         docker compose exec worker python -m pytest /app/tests/engine -v
         ;;
 
+    test-models)
+        echo "Running Dixon-Coles model tests..."
+        docker compose exec worker python -m pytest /app/tests/engine/models -v
+        ;;
+
     seed)
         echo "Seeding leagues, seasons, and team aliases..."
         docker compose exec worker python -m services.engine.ingest seed
@@ -141,6 +146,7 @@ case "${1:-help}" in
         echo "  verify         Gate check — PASS if both services return 200"
         echo "  lint           Run linters (ruff + next lint)"
         echo "  test           Run test suites"
+        echo "  test-models    Run Dixon-Coles model tests only"
         echo "  seed           Seed leagues, seasons, and team aliases"
         echo "  csv-backfill   Backfill season CSVs from football-data.co.uk"
         echo "  fixtures-sync  Sync upcoming fixtures from football-data.org"
