@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   lint-and-test:
@@ -34,6 +34,11 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://predictor:changeme@localhost:5432/football_predictor
+      REDIS_URL: redis://localhost:6379/0
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - uses: actions/checkout@v4
@@ -65,14 +70,9 @@ jobs:
         run: npx next lint || true
 
       - name: Run Alembic migrations
-        env:
-          DATABASE_URL: postgresql+psycopg://predictor:changeme@localhost:5432/football_predictor
         run: alembic -c db/alembic.ini upgrade head
 
       - name: Run API tests
-        env:
-          DATABASE_URL: postgresql+psycopg://predictor:changeme@localhost:5432/football_predictor
-          REDIS_URL: redis://localhost:6379/0
         run: python -m pytest tests/api -v
 
       - name: Run engine tests
