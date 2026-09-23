@@ -34,6 +34,7 @@ def fit_dixon_coles(
     weights: NDArray[np.float64] | None = None,
     rho_bounds: tuple[float, float] = (-0.5, 0.5),
     max_iter: int = 200,
+    x0: NDArray[np.float64] | None = None,
 ) -> FitResult:
     """Fit the Dixon-Coles model to match data.
 
@@ -42,6 +43,10 @@ def fit_dixon_coles(
         weights: optional per-match weights (e.g. from time decay)
         rho_bounds: box bounds for the rho parameter
         max_iter: maximum L-BFGS-B iterations
+        x0: optional initial parameter vector for warm-starting. Used when
+            the team set is unchanged between consecutive fits to halve
+            iteration count. Ignored if its length does not match the
+            expected vector length.
 
     Returns:
         FitResult with fitted parameters and diagnostics.
@@ -57,12 +62,15 @@ def fit_dixon_coles(
     home_goals = df["home_goals"].values.astype(np.int_)
     away_goals = df["away_goals"].values.astype(np.int_)
 
-    # Initial parameter vector
+    # Initial parameter vector: use warm-start if provided and compatible
     vec_len = vector_length(n)
-    x0 = np.zeros(vec_len, dtype=np.float64)
-    x0[0] = 0.25       # mu (home advantage)
-    x0[2 * n - 1] = 0.20  # gamma (scoring rate)
-    x0[2 * n] = -0.10     # rho (dependence)
+    if x0 is not None and len(x0) == vec_len:
+        x0_vec = x0.copy()
+    else:
+        x0_vec = np.zeros(vec_len, dtype=np.float64)
+        x0_vec[0] = 0.25       # mu (home advantage)
+        x0_vec[2 * n - 1] = 0.20  # gamma (scoring rate)
+        x0_vec[2 * n] = -0.10     # rho (dependence)
 
     # Bounds: only rho is bounded; everything else is free
     bounds = [(None, None)] * vec_len
@@ -70,7 +78,7 @@ def fit_dixon_coles(
 
     result = minimize(
         neg_log_likelihood,
-        x0,
+        x0_vec,
         args=(teams, home_idx, away_idx, home_goals, away_goals, weights),
         method="L-BFGS-B",
         bounds=bounds,

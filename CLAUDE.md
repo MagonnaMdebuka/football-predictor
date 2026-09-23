@@ -1,6 +1,7 @@
 # Football Predictor — Claude Code Instructions
 
 ## Current Phase
+Phase 3 (Backtest) — walk-forward harness complete (~121 tests passing).
 Phase 2 (Engine) — Dixon-Coles model complete (64 tests passing).
 Phase 1 (Ingest) — complete (87 tests passing).
 
@@ -36,6 +37,11 @@ run.sh                 Task runner (replaces Makefile)
 ```bash
 ./run.sh dev              # Start all services
 ./run.sh test             # Run pytest
+./run.sh test-models      # Run Dixon-Coles model tests only
+./run.sh test-backtest    # Run backtest test suite only
+./run.sh backtest         # Run walk-forward backtest
+./run.sh backtest-summary # Print summary of a backtest JSON report
+./run.sh backtest-compare # Compare two reports for byte-identical output
 ./run.sh csv-backfill     # Backfill CSV data
 ./run.sh fixtures-sync    # Sync upcoming fixtures
 ./run.sh seed             # Seed leagues, seasons, aliases

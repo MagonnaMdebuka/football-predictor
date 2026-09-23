@@ -57,3 +57,33 @@ Use the Dixon-Coles (1997) model for match outcome prediction. This bivariate Po
 - **Optimiser:** L-BFGS-B for efficient bounded optimisation (rho in [-0.5, 0.5]).
 - **Time decay:** Exponential weights `exp(-xi * days/3.5)` with grid-search xi optimisation.
 - **Pure library:** All fitting functions take DataFrames and return parameter dataclasses — no network or database calls inside model code.
+
+## ADR-010: Walk-Forward with Per-Date Refit as Default
+**Date:** 22/09/2026
+**Status:** Accepted
+
+Use walk-forward backtesting with expanding-window training and per-date refitting as the default strategy. For each distinct kickoff date in the held-out seasons, fit the model on all matches strictly before that date. Weekly refitting is available as a faster alternative for iteration (`--refit-step weekly`), bucketing by the most recent Monday. Per-date is the gate default because it produces the most accurate evaluation — each prediction uses the maximum available training data without any future leakage.
+
+## ADR-011: Four Baselines Including Independent Poisson
+**Date:** 22/09/2026
+**Status:** Accepted
+
+Evaluate the Dixon-Coles model against four baselines: (1) uniform 1/3, (2) base-rate proportions from training data, (3) independent Poisson (Dixon-Coles with rho=0), and (4) bookmaker closing odds. The independent Poisson baseline is a diagnostic tool that isolates the contribution of the tau correction and time decay. The gate requires beating base-rate and independent Poisson on both RPS and log loss. Bookmaker is a reference ceiling only — not a gate requirement, since beating the market is not expected from a statistical model.
+
+## ADR-012: JSON Reports Committed to Git
+**Date:** 22/09/2026
+**Status:** Accepted
+
+Backtest reports are serialised as deterministic JSON files in `backtests/` and committed to git. This provides an audit trail of model performance over time, enables byte-identical comparison between runs, and makes it straightforward to review metric changes in pull requests. Reports use `sort_keys=True`, 2-space indent, and 10-decimal-place float precision.
+
+## ADR-013: Poison Test as Parameterised Meta-Test
+**Date:** 22/09/2026
+**Status:** Accepted
+
+The poison test (overwriting future results to verify no leakage) is implemented as a parameterised pytest test marked `@pytest.mark.slow` and excluded from default test runs. This prevents the test from slowing down CI while remaining available for thorough validation. Each parameterised instance selects a different prediction date, overwrites all results on or after that date with random scores, and asserts that predictions for that date remain unchanged.
+
+## ADR-014: Float Precision (10dp) in JSON
+**Date:** 22/09/2026
+**Status:** Accepted
+
+All floating-point values in backtest JSON reports are rounded to 10 decimal places. This is sufficient precision for statistical metrics (RPS, log loss, Brier scores) while ensuring byte-identical output across platforms and Python versions. Combined with `sort_keys=True`, 2-space indent, and Unix line endings, this enables reliable `diff`-based comparison of reports.

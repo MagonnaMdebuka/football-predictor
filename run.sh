@@ -92,6 +92,26 @@ case "${1:-help}" in
         docker compose exec worker python -m pytest /app/tests/engine/models -v
         ;;
 
+    test-backtest)
+        echo "Running backtest tests..."
+        docker compose exec worker python -m pytest /app/tests/engine/backtest -v -m "not slow"
+        ;;
+
+    backtest)
+        echo "Running walk-forward backtest..."
+        docker compose exec worker python -m services.engine.backtest run "${@:2}"
+        ;;
+
+    backtest-summary)
+        echo "Backtest report summary..."
+        docker compose exec worker python -m services.engine.backtest summary "${@:2}"
+        ;;
+
+    backtest-compare)
+        echo "Comparing backtest reports..."
+        docker compose exec worker python -m services.engine.backtest compare "${@:2}"
+        ;;
+
     seed)
         echo "Seeding leagues, seasons, and team aliases..."
         docker compose exec worker python -m services.engine.ingest seed
@@ -147,6 +167,10 @@ case "${1:-help}" in
         echo "  lint           Run linters (ruff + next lint)"
         echo "  test           Run test suites"
         echo "  test-models    Run Dixon-Coles model tests only"
+        echo "  test-backtest  Run backtest test suite only"
+        echo "  backtest       Run walk-forward backtest"
+        echo "  backtest-summary  Print summary of a backtest JSON report"
+        echo "  backtest-compare  Compare two reports for byte-identical output"
         echo "  seed           Seed leagues, seasons, and team aliases"
         echo "  csv-backfill   Backfill season CSVs from football-data.co.uk"
         echo "  fixtures-sync  Sync upcoming fixtures from football-data.org"
