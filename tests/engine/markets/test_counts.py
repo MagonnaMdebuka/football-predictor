@@ -11,6 +11,7 @@ from services.engine.markets.counts import (
     CountMarkets,
     compound_booking_to_markets,
     count_to_markets,
+    total_count_to_match_markets,
 )
 
 
@@ -132,6 +133,49 @@ class TestCountToMarkets:
         for ou in markets.match_over_under + markets.home_over_under + markets.away_over_under:
             assert 0.0 <= ou["over"] <= 1.0
             assert 0.0 <= ou["under"] <= 1.0
+
+
+class TestTotalCountToMatchMarkets:
+    """Match-level O/U from directly-fitted total NB2."""
+
+    def test_over_plus_under_equals_one(self):
+        markets = total_count_to_match_markets(10.5, 0.12, CORNER_MATCH_LINES)
+        for ou in markets:
+            assert ou["over"] + ou["under"] == pytest.approx(1.0, abs=0.001)
+
+    def test_monotonicity_over(self):
+        """P(over) should decrease as line increases."""
+        markets = total_count_to_match_markets(10.5, 0.12, CORNER_MATCH_LINES)
+        overs = [ou["over"] for ou in markets]
+        for i in range(len(overs) - 1):
+            assert overs[i] >= overs[i + 1] - 1e-6
+
+    def test_probabilities_valid_range(self):
+        markets = total_count_to_match_markets(10.5, 0.12, CORNER_MATCH_LINES)
+        for ou in markets:
+            assert 0.0 <= ou["over"] <= 1.0
+            assert 0.0 <= ou["under"] <= 1.0
+
+    def test_correct_line_count(self):
+        markets = total_count_to_match_markets(10.5, 0.12, CORNER_MATCH_LINES)
+        assert len(markets) == len(CORNER_MATCH_LINES)
+
+    def test_higher_mu_increases_over(self):
+        low = total_count_to_match_markets(6.0, 0.12, CORNER_MATCH_LINES)
+        high = total_count_to_match_markets(15.0, 0.12, CORNER_MATCH_LINES)
+        for lo, hi in zip(low, high):
+            assert hi["over"] > lo["over"]
+
+    def test_alpha_zero_matches_poisson(self):
+        """With alpha~0, should match Poisson directly."""
+        from scipy.stats import poisson
+        mu = 10.0
+        markets = total_count_to_match_markets(mu, 1e-12, CORNER_MATCH_LINES)
+        cdf = poisson.cdf(np.arange(80), mu)
+        for ou in markets:
+            k = int(ou["line"])
+            expected_under = float(cdf[k])
+            assert ou["under"] == pytest.approx(expected_under, abs=0.002)
 
 
 class TestCompoundBookingToMarkets:

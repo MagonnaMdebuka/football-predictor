@@ -90,6 +90,38 @@ class TestComputeCountBrier:
         assert result.mean_actual_total == pytest.approx(9.0)
 
 
+class TestMuTotalInBrier:
+    """compute_count_brier uses mu_total when available."""
+
+    def test_mu_total_used_for_predicted_total(self):
+        """When mu_total is set, predicted total should use it instead of mu_home + mu_away."""
+        pred = _make_count_pred(
+            actual_home=5, actual_away=4, mu_home=5.0, mu_away=4.5,
+        )
+        # Replace with a version that has mu_total set
+        pred_with_total = CountPrediction(
+            date=pred.date, season=pred.season, home_team=pred.home_team,
+            away_team=pred.away_team, model_type=pred.model_type,
+            actual_home=pred.actual_home, actual_away=pred.actual_away,
+            mu_home=pred.mu_home, mu_away=pred.mu_away, alpha=pred.alpha,
+            match_over_under=pred.match_over_under,
+            home_over_under=pred.home_over_under,
+            away_over_under=pred.away_over_under,
+            n_training_matches=pred.n_training_matches,
+            mu_total=11.0,  # different from mu_home + mu_away (9.5)
+        )
+        result = compute_count_brier([pred_with_total])
+        assert result.mean_predicted_total == pytest.approx(11.0)
+
+    def test_without_mu_total_uses_sum(self):
+        """Without mu_total, predicted total should be mu_home + mu_away."""
+        pred = _make_count_pred(
+            actual_home=5, actual_away=4, mu_home=5.0, mu_away=4.5,
+        )
+        result = compute_count_brier([pred])
+        assert result.mean_predicted_total == pytest.approx(9.5)
+
+
 class TestComputeCountCalibration:
     def test_empty_returns_none(self):
         assert compute_count_calibration([]) is None

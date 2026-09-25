@@ -152,6 +152,46 @@ def count_to_markets(
     )
 
 
+def total_count_to_match_markets(
+    mu_total: float,
+    alpha_total: float,
+    match_lines: list[float],
+    max_k: int = DEFAULT_MAX_K,
+) -> list[dict]:
+    """Derive match-level O/U markets from a single NB2 distribution on totals.
+
+    Unlike count_to_markets() which convolves two marginals, this uses a
+    directly-fitted total distribution — avoiding the independence assumption.
+
+    Args:
+        mu_total: expected total count (fitted directly)
+        alpha_total: NB2 overdispersion for totals
+        match_lines: O/U lines for the total
+        max_k: maximum k for PMF computation
+
+    Returns:
+        List of {line, over, under} dicts.
+    """
+    pmf = _compute_marginal_pmf(mu_total, alpha_total, max_k)
+    cdf = np.cumsum(pmf)
+
+    match_ou = []
+    for line in match_lines:
+        k = int(line)
+        if k < len(cdf):
+            p_under = float(cdf[k])
+        else:
+            p_under = 1.0
+        p_over = 1.0 - p_under
+        match_ou.append({
+            "line": line,
+            "over": _r4(p_over),
+            "under": _r4(p_under),
+        })
+
+    return match_ou
+
+
 def _booking_point_pmf(
     mu_yellow: float,
     alpha_yellow: float,

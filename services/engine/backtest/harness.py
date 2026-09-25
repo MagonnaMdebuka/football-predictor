@@ -477,6 +477,8 @@ def run_backtest(
         # Run count models using the same walk-forward dates
         corner_prev_packed = None
         corner_prev_teams = None
+        corner_prev_total_packed = None
+        corner_prev_total_teams = None
         card_prev_yellow_packed = None
         card_prev_yellow_teams = None
         card_prev_red_packed = None
@@ -508,16 +510,21 @@ def run_backtest(
 
             if has_corners:
                 corner_weights = time_weights(match_dates_arr, ref_date_val, corners_xi)
-                c_preds, c_packed, c_teams = run_count_predictions(
+                c_preds, c_packed, c_teams, c_t_packed, c_t_teams = run_count_predictions(
                     training_df, pred_matches, model_type="corners",
                     weights=corner_weights,
                     prev_packed=corner_prev_packed,
                     prev_teams=corner_prev_teams,
+                    prev_total_packed=corner_prev_total_packed,
+                    prev_total_teams=corner_prev_total_teams,
                 )
                 corner_preds.extend(c_preds)
                 if len(c_packed) > 0:
                     corner_prev_packed = c_packed
                     corner_prev_teams = c_teams
+                if c_t_packed is not None:
+                    corner_prev_total_packed = c_t_packed
+                    corner_prev_total_teams = c_t_teams
 
             if has_cards:
                 card_weights = time_weights(match_dates_arr, ref_date_val, cards_xi)

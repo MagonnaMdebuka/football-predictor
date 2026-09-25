@@ -24,13 +24,15 @@ class TestRunCountPredictions:
             & (multi_season_df["season"] == "2024-25")
         ].head(5)
 
-        preds, packed, teams = run_count_predictions(
+        preds, packed, teams, t_packed, t_teams = run_count_predictions(
             training, held_out, model_type="corners",
         )
         assert len(preds) == len(held_out)
         assert all(p.model_type == "corners" for p in preds)
         assert len(packed) > 0
         assert len(teams) > 0
+        assert t_packed is not None
+        assert t_teams is not None
 
     def test_cards_produces_predictions(self, multi_season_df):
         """Card model produces predictions for held-out matches."""
@@ -41,12 +43,14 @@ class TestRunCountPredictions:
             & (multi_season_df["season"] == "2024-25")
         ].head(5)
 
-        preds, packed, teams = run_count_predictions(
+        preds, packed, teams, t_packed, t_teams = run_count_predictions(
             training, held_out, model_type="cards",
             include_referees=True, min_referee_matches=5,
         )
         assert len(preds) == len(held_out)
         assert all(p.model_type == "cards" for p in preds)
+        assert t_packed is None
+        assert t_teams is None
 
     def test_predictions_have_markets(self, multi_season_df):
         """Each prediction has match and team-level O/U entries."""
@@ -57,7 +61,7 @@ class TestRunCountPredictions:
             & (multi_season_df["season"] == "2024-25")
         ].head(3)
 
-        preds, _, _ = run_count_predictions(
+        preds, _, _, _, _ = run_count_predictions(
             training, held_out, model_type="corners",
         )
         for p in preds:
@@ -77,7 +81,7 @@ class TestRunCountPredictions:
             & (multi_season_df["season"] == "2024-25")
         ].head(3)
 
-        preds, _, _ = run_count_predictions(
+        preds, _, _, _, _ = run_count_predictions(
             training, held_out, model_type="corners",
         )
         for p in preds:
@@ -94,13 +98,14 @@ class TestRunCountPredictions:
         ].head(3)
 
         # First fit
-        preds1, packed1, teams1 = run_count_predictions(
+        preds1, packed1, teams1, tp1, tt1 = run_count_predictions(
             training, held_out, model_type="corners",
         )
-        # Second fit with warm-start
-        preds2, packed2, teams2 = run_count_predictions(
+        # Second fit with warm-start (both per-team and total)
+        preds2, packed2, teams2, tp2, tt2 = run_count_predictions(
             training, held_out, model_type="corners",
             prev_packed=packed1, prev_teams=teams1,
+            prev_total_packed=tp1, prev_total_teams=tt1,
         )
         assert len(preds2) == len(preds1)
 
@@ -114,7 +119,7 @@ class TestRunCountPredictions:
             "away_goals": [0, 1, 1, 2, 0, 0],
         })
         held_out = training.head(2)
-        preds, packed, teams = run_count_predictions(
+        preds, packed, teams, tp, tt = run_count_predictions(
             training, held_out, model_type="corners",
         )
         assert preds == []
@@ -129,7 +134,7 @@ class TestRunCountPredictions:
             "away_corners": [3, 4, 5, 2],
         })
         held_out = training.head(2)
-        preds, _, _ = run_count_predictions(
+        preds, _, _, _, _ = run_count_predictions(
             training, held_out, model_type="corners",
         )
         assert preds == []
@@ -143,7 +148,7 @@ class TestRunCountPredictions:
             & (multi_season_df["season"] == "2024-25")
         ].head(3)
 
-        preds, _, _ = run_count_predictions(
+        preds, _, _, _, _ = run_count_predictions(
             training, held_out, model_type="cards",
             include_referees=True, min_referee_matches=5,
         )
@@ -159,7 +164,7 @@ class TestRunCountPredictions:
             & (multi_season_df["season"] == "2024-25")
         ].head(3)
 
-        preds, _, _ = run_count_predictions(
+        preds, _, _, _, _ = run_count_predictions(
             training, held_out, model_type="corners",
         )
         for p in preds:
@@ -174,11 +179,46 @@ class TestRunCountPredictions:
             & (multi_season_df["season"] == "2024-25")
         ].head(3)
 
-        preds, _, _ = run_count_predictions(
+        preds, _, _, _, _ = run_count_predictions(
             training, held_out, model_type="corners",
         )
         for p in preds:
             assert p.alpha > 0
+
+    def test_corners_have_mu_total(self, multi_season_df):
+        """Corner predictions should have mu_total populated from total model."""
+        cutoff = pd.Timestamp("2024-08-01")
+        training = multi_season_df[multi_season_df["date"] < cutoff]
+        held_out = multi_season_df[
+            (multi_season_df["date"] >= cutoff)
+            & (multi_season_df["season"] == "2024-25")
+        ].head(3)
+
+        preds, _, _, _, _ = run_count_predictions(
+            training, held_out, model_type="corners",
+        )
+        for p in preds:
+            assert p.mu_total is not None
+            assert p.mu_total > 0
+            assert p.alpha_total is not None
+            assert p.alpha_total > 0
+
+    def test_cards_have_no_mu_total(self, multi_season_df):
+        """Card predictions should have mu_total=None (no total model)."""
+        cutoff = pd.Timestamp("2024-08-01")
+        training = multi_season_df[multi_season_df["date"] < cutoff]
+        held_out = multi_season_df[
+            (multi_season_df["date"] >= cutoff)
+            & (multi_season_df["season"] == "2024-25")
+        ].head(3)
+
+        preds, _, _, _, _ = run_count_predictions(
+            training, held_out, model_type="cards",
+            include_referees=True, min_referee_matches=5,
+        )
+        for p in preds:
+            assert p.mu_total is None
+            assert p.alpha_total is None
 
 
 class TestRunCompoundCardPredictions:

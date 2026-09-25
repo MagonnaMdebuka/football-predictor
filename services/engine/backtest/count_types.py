@@ -44,6 +44,9 @@ class CountPrediction:
     home_over_under: list[dict] = field(default_factory=list)
     away_over_under: list[dict] = field(default_factory=list)
     n_training_matches: int = 0
+    # Total model fields (corners only — direct NB2 on totals)
+    mu_total: float | None = None
+    alpha_total: float | None = None
     # Compound card model fields (None for corners and non-compound cards)
     mu_yellow_home: float | None = None
     mu_yellow_away: float | None = None
@@ -126,7 +129,10 @@ def compute_count_brier(
         sum(per_line_brier.values()) / len(per_line_brier) if per_line_brier else 0.0
     )
 
-    pred_totals = [p.mu_home + p.mu_away for p in predictions]
+    pred_totals = [
+        p.mu_total if p.mu_total is not None else p.mu_home + p.mu_away
+        for p in predictions
+    ]
     actual_totals = [p.actual_home + p.actual_away for p in predictions]
 
     return CountMetricSet(
@@ -146,7 +152,10 @@ def compute_count_calibration(
         return None
 
     n = len(predictions)
-    pred_mean = sum(p.mu_home + p.mu_away for p in predictions) / n
+    pred_mean = sum(
+        p.mu_total if p.mu_total is not None else p.mu_home + p.mu_away
+        for p in predictions
+    ) / n
     actual_mean = sum(p.actual_home + p.actual_away for p in predictions) / n
 
     return CountCalibration(

@@ -18,10 +18,16 @@ from services.engine.markets.counts import (
     CORNER_TEAM_LINES,
     compound_booking_to_markets,
     count_to_markets,
+    total_count_to_match_markets,
 )
 from services.engine.models.count_fit import fit_count_model
 from services.engine.models.count_params import CountModelParams, pack
 from services.engine.models.negbin import count_expectancy
+from services.engine.models.total_count_fit import fit_total_count_model
+from services.engine.models.total_count_params import (
+    TotalCountModelParams,
+    pack_total,
+)
 
 
 def _augment_count_params(
@@ -49,6 +55,28 @@ def _augment_count_params(
     )
 
 
+def _augment_total_count_params(
+    params: TotalCountModelParams,
+    teams_needed: list[str],
+) -> TotalCountModelParams:
+    """Add missing teams at league-average effect (home_effect=0, away_effect=0)."""
+    missing = [t for t in teams_needed if t not in params.teams]
+    if not missing:
+        return params
+
+    new_teams = list(params.teams) + missing
+    new_home = np.concatenate([params.home_effect, np.zeros(len(missing))])
+    new_away = np.concatenate([params.away_effect, np.zeros(len(missing))])
+
+    return TotalCountModelParams(
+        teams=new_teams,
+        mu=params.mu,
+        home_effect=new_home,
+        away_effect=new_away,
+        alpha=params.alpha,
+    )
+
+
 def run_count_predictions(
     training_df: pd.DataFrame,
     prediction_matches: pd.DataFrame,
@@ -58,8 +86,20 @@ def run_count_predictions(
     min_referee_matches: int = 20,
     prev_packed: NDArray[np.float64] | None = None,
     prev_teams: list[str] | None = None,
-) -> tuple[list[CountPrediction], NDArray[np.float64], list[str]]:
+    prev_total_packed: NDArray[np.float64] | None = None,
+    prev_total_teams: list[str] | None = None,
+) -> tuple[
+    list[CountPrediction],
+    NDArray[np.float64], list[str],
+    NDArray[np.float64] | None, list[str] | None,
+]:
     """Fit a count model and predict for one refit date's matches.
+
+    For corners, fits both per-team and total models (dual architecture):
+    - Per-team model: used for team-level O/U markets
+    - Total model: used for match-level O/U markets (avoids independence assumption)
+
+    For cards, fits per-team model only.
 
     Args:
         training_df: training data (strictly before prediction date)
@@ -68,12 +108,21 @@ def run_count_predictions(
         weights: optional time-decay weights for training data
         include_referees: whether to include referee effects (cards only)
         min_referee_matches: minimum matches for referee effect
-        prev_packed: previous fit's packed vector for warm-start
-        prev_teams: previous fit's team list for warm-start matching
+        prev_packed: previous fit's packed vector for warm-start (per-team model)
+        prev_teams: previous fit's team list for warm-start (per-team model)
+        prev_total_packed: previous fit's packed vector for warm-start (total model)
+        prev_total_teams: previous fit's team list for warm-start (total model)
 
     Returns:
-        (predictions, packed_params, teams) for warm-start chaining.
+        (predictions, packed_params, teams, total_packed, total_teams)
+        for warm-start chaining. total_packed/total_teams are None for cards.
     """
+    empty: tuple[
+        list[CountPrediction],
+        NDArray[np.float64], list[str],
+        NDArray[np.float64] | None, list[str] | None,
+    ] = ([], np.array([]), [], None, None)
+
     # Determine target columns and market lines
     if model_type == "corners":
         home_col, away_col = "home_corners", "away_corners"
@@ -86,12 +135,12 @@ def run_count_predictions(
 
     # Check that target columns exist
     if home_col not in training_df.columns or away_col not in training_df.columns:
-        return [], np.array([]), []
+        return empty
 
     # Drop rows with missing count data
     training_clean = training_df.dropna(subset=[home_col, away_col])
     if len(training_clean) < 10:
-        return [], np.array([]), []
+        return empty
 
     # Warm-start: use previous params if team set unchanged
     teams = sorted(
@@ -101,7 +150,7 @@ def run_count_predictions(
     if prev_packed is not None and prev_teams is not None and teams == prev_teams:
         x0 = prev_packed
 
-    # Fit
+    # Fit per-team model
     fit_result = fit_count_model(
         training_clean,
         target_home_col=home_col,
@@ -113,6 +162,27 @@ def run_count_predictions(
     )
 
     packed = pack(fit_result.params)
+
+    # Fit total model (corners only)
+    total_fit_result = None
+    total_packed_out: NDArray[np.float64] | None = None
+    total_teams_out: list[str] | None = None
+
+    if model_type == "corners":
+        t_x0 = None
+        if (prev_total_packed is not None and prev_total_teams is not None
+                and teams == prev_total_teams):
+            t_x0 = prev_total_packed
+
+        total_fit_result = fit_total_count_model(
+            training_clean,
+            target_home_col=home_col,
+            target_away_col=away_col,
+            weights=weights,
+            x0=t_x0,
+        )
+        total_packed_out = pack_total(total_fit_result.params)
+        total_teams_out = teams
 
     # Generate predictions
     predictions: list[CountPrediction] = []
@@ -134,9 +204,8 @@ def run_count_predictions(
             if params.referees and ref_name in params.referees:
                 ref_idx = params.referees.index(ref_name)
                 ref_eff = params.referee_effect[ref_idx]
-            # Ineligible referees get effect=0 (no adjustment)
 
-        # Compute expected counts
+        # Compute expected counts (per-team model)
         mu_h, mu_a = count_expectancy(
             attack_h=params.attack[hi],
             defence_a=params.defence[ai],
@@ -151,11 +220,33 @@ def run_count_predictions(
         mu_h_val = mu_h.item()
         mu_a_val = mu_a.item()
 
-        # Compute markets
-        markets = count_to_markets(
+        # Compute team-level markets from per-team model
+        team_markets = count_to_markets(
             mu_h_val, mu_a_val, float(params.alpha),
             match_lines, team_lines,
         )
+
+        # Match-level O/U: use total model for corners, per-team convolution otherwise
+        mu_total_val: float | None = None
+        alpha_total_val: float | None = None
+
+        if total_fit_result is not None:
+            total_params = _augment_total_count_params(
+                total_fit_result.params, [ht, at],
+            )
+            t_hi = total_params.teams.index(ht)
+            t_ai = total_params.teams.index(at)
+            mu_total_val = float(np.exp(
+                total_params.mu
+                + total_params.home_effect[t_hi]
+                + total_params.away_effect[t_ai]
+            ))
+            alpha_total_val = float(total_params.alpha)
+            match_ou = total_count_to_match_markets(
+                mu_total_val, alpha_total_val, match_lines,
+            )
+        else:
+            match_ou = team_markets.match_over_under
 
         # Get actual counts (may be NaN for future matches)
         actual_h = int(match[home_col]) if pd.notna(match.get(home_col)) else 0
@@ -173,14 +264,16 @@ def run_count_predictions(
             mu_away=round(mu_a_val, 6),
             alpha=round(float(params.alpha), 6),
             referee=ref_name,
-            match_over_under=markets.match_over_under,
-            home_over_under=markets.home_over_under,
-            away_over_under=markets.away_over_under,
+            match_over_under=match_ou,
+            home_over_under=team_markets.home_over_under,
+            away_over_under=team_markets.away_over_under,
             n_training_matches=fit_result.n_matches,
+            mu_total=round(mu_total_val, 6) if mu_total_val is not None else None,
+            alpha_total=round(alpha_total_val, 6) if alpha_total_val is not None else None,
         )
         predictions.append(pred)
 
-    return predictions, packed, teams
+    return predictions, packed, teams, total_packed_out, total_teams_out
 
 
 def run_compound_card_predictions(
