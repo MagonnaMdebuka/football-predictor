@@ -33,6 +33,8 @@ def seed_premier_league(session: Session) -> League:
             fd_org_code=PL_FD_ORG_CODE,
             has_corners=True,
             has_cards=True,
+            ship_corners=False,
+            ship_cards=False,
             has_xg=False,
         )
         .on_conflict_do_nothing()

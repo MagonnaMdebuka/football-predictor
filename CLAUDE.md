@@ -1,7 +1,7 @@
 # Football Predictor — Claude Code Instructions
 
 ## Current Phase
-Phase 5 (Corners & Cards) — compound card model (NB2 yellows + Poisson reds), gate line filtering, relative too-good alarm (589 tests passing).
+Phase 5 (Corners & Cards) — complete. Goals ship, corners and cards do not (ADR-020). 623 tests passing.
 Phase 4 (Markets) — goals-derived markets complete.
 Phase 3 (Backtest) — walk-forward harness complete.
 Phase 2 (Engine) — Dixon-Coles model complete.

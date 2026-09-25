@@ -139,3 +139,53 @@ The root cause is the **independence assumption in the NB2 convolution**. Home a
 The decile calibration slope is 0.51 (should be 1.0): the model predicts a 3.4-corner spread across deciles but actual totals only rise 1.8, consistent with over-dispersion compressing discrimination.
 
 **Decision:** accept the gate FAIL for corners under the current architecture. The fix is not better team effects (those are already meaningful) but a model that captures the negative home-away covariance — either a bivariate count model, a direct model on total corners, or a copula correction on the marginals. Deferred to Phase 9. Full diagnostic in `docs/phases/phase-5-corner-diagnostic.md`.
+
+## ADR-020: Phase 5 Outcome — Goals Ship, Corners and Cards Do Not
+**Date:** 25/09/2026
+**Status:** Accepted
+
+### Summary
+
+Phase 5 evaluated three market families against the gate criteria (beat base-rate on publishable O/U lines). Goals markets pass; corners and cards fail. Only goals markets ship to the UI.
+
+### Goals Markets — PASS
+
+Goals gate passed (ADR-017): RPS and log loss beat base-rate and independent Poisson on 760 held-out matches. 15 goals-derived markets (1×3, correct score, O/U 0.5–5.5, BTTS) ship via `grid_to_markets()`.
+
+### Corner Markets — FAIL
+
+**Direct total-corners NB2 model** was built to fix the independence assumption failure documented in ADR-019. The model fits `mu_total = exp(mu + home_effect[h] + away_effect[a])` as a single NB2 count, eliminating the convolution that overestimated Var(total) by 31%.
+
+**Variance fixed.** Model implied Var(total) = 10.97 vs observed 11.35 (ratio 0.966), down from 14.9 (1.309) under convolution.
+
+**Brier still fails.** Team effects overfit: decile calibration slope fell from 0.51 to 0.36 (predicted 3.4-corner range vs 1.8 actual). A shrinkage sweep over k ∈ {0, 0.25, 0.4, 0.5, 0.6, 0.75, 1.0} (where `mu_total = exp(mu + k*home_eff + k*away_eff)`) was tuned on validation seasons (2022-23, 2023-24) and confirmed on test seasons (2024-25, 2025-26):
+
+| k | Val Brier | Val vs base | Test Brier | Test vs base | Test vs simple |
+|---|-----------|-------------|------------|--------------|----------------|
+| 0.00 | 0.227111 | +0.06% | 0.221767 | +0.04% | +0.21% |
+| 0.25 | 0.226025 | -0.42% | 0.221295 | -0.18% | +0.00% |
+| 0.40 | 0.226024 | -0.42% | 0.221752 | +0.03% | +0.21% |
+| 1.00 | 0.230422 | +1.52% | 0.228247 | +2.96% | +3.14% |
+
+Best validation k=0.40 fails on test (+0.03% vs base, +0.21% vs simple). Best test k=0.25 ties simple but was not selected on validation. The signal is real (decile r = 0.79–0.91 at moderate k on test) but too weak to overcome the base-rate prior in Brier terms.
+
+**Decision:** corners do not ship. The team effects are real but insufficient for publishable O/U markets. Deferred to Phase 9 for potential bivariate or copula treatment.
+
+### Card Markets — FAIL
+
+**Compound model is correctly specified.** The compound booking-point PMF (`10*Y + 25*R` where Y ~ NB2, R ~ Poisson) was verified empirically: 100,000 samples from `_booking_point_pmf()` at league-mean parameters yield mean = 38.9, variance = 432. With fitted team effects across all matchups, mean model Var(total BP) = 420 vs observed 499 (ratio 0.840). The previously reported "42.2 vs 499" was a diagnostic script formula error (applying `mu + alpha*mu^2` to booking-point means with yellow alpha instead of decomposing through the compound distribution).
+
+The remaining variance gap (420 vs 499, 16% under) is consistent with positive home-away booking-point correlation (r = +0.196, p < 0.0001) — the convolution assumes independence and underestimates total variance.
+
+**Gate result:** card model Brier 0.2170 vs baseline 0.2146 (+1.1%). Cards fail the gate.
+
+**Decision:** cards do not ship. The compound model correctly decomposes yellow/red mechanics but the independence assumption in the convolution underestimates total variance, same pattern as corners but milder. Deferred to Phase 9.
+
+### Capability Flags
+
+Two flag tiers on `LeagueConfig` and the `leagues` DB table:
+
+- `has_corners` / `has_cards` — data exists and backtest runs count models (True for E0). Retained for diagnostics and future development.
+- `ship_corners` / `ship_cards` — markets are published to the UI (False for E0). The API and frontend read these flags to determine which market families to display.
+
+Any future phase that adds market endpoints or UI components reads `ship_*` flags from the league config, not `has_*`. This ensures corners and cards remain suppressed until a future phase (Phase 9+) produces a model that passes the gate.

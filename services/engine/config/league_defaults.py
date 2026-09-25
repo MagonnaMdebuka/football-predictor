@@ -37,6 +37,8 @@ class LeagueConfig:
     test_seasons: tuple[str, ...] = ("2024-25", "2025-26")
     has_corners: bool = False
     has_cards: bool = False
+    ship_corners: bool = False
+    ship_cards: bool = False
 
 
 # Per-league config table.
