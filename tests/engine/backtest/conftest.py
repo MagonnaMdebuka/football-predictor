@@ -18,11 +18,23 @@ import pytest
 from services.engine.backtest.types import BacktestConfig, BookmakerOddsCols
 
 TEAMS = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]
-TRUE_MU = 0.25
-TRUE_GAMMA = 0.20
+TRUE_MU = 0.20      # league scoring-rate intercept
+TRUE_GAMMA = 0.25   # home-advantage parameter
 TRUE_RHO = -0.08
 TRUE_ATTACK = np.array([0.30, 0.15, 0.05, -0.10, -0.15, -0.25])
 TRUE_DEFENCE = np.array([-0.20, -0.05, 0.05, 0.10, 0.05, 0.05])
+
+# Count model true parameters for synthetic data
+CORNER_MU = 2.20        # log-scale intercept for corners (~9 per side)
+CORNER_GAMMA = 0.10     # home advantage for corners
+CORNER_ALPHA = 0.15     # NB2 overdispersion
+# Compound card model: yellows from NB2, reds from Poisson, bp = 10*Y + 25*R
+YELLOW_MU = 1.10        # log-scale intercept for yellows (~3.0 per side)
+YELLOW_ALPHA = 0.15     # NB2 overdispersion for yellows
+RED_MU = -2.30          # log-scale intercept for reds (~0.1 per side)
+CARD_GAMMA = 0.05       # home advantage for cards (shared by yellow/red)
+REFEREES = ["Smith", "Jones", "Taylor", "Brown", "Wilson"]
+REF_EFFECT = np.array([0.15, 0.05, -0.05, -0.10, -0.05])  # sums to 0
 
 # Season date ranges (August to May, matching football-data.co.uk)
 SEASON_RANGES = {
@@ -60,7 +72,7 @@ def _generate_season_matches(
     rows = []
     for idx, (home, away, hi, ai) in enumerate(fixtures):
         lam_h = np.exp(TRUE_MU + TRUE_GAMMA + TRUE_ATTACK[hi] + TRUE_DEFENCE[ai])
-        lam_a = np.exp(TRUE_GAMMA + TRUE_ATTACK[ai] + TRUE_DEFENCE[hi])
+        lam_a = np.exp(TRUE_MU + TRUE_ATTACK[ai] + TRUE_DEFENCE[hi])
         hg = int(rng.poisson(lam_h))
         ag = int(rng.poisson(lam_a))
 
@@ -97,6 +109,38 @@ def _generate_season_matches(
         else:
             ftr = "A"
 
+        # Generate synthetic corner counts (NB2-distributed)
+        from scipy.stats import nbinom as nbinom_dist
+        corner_mu_h = np.exp(CORNER_MU + CORNER_GAMMA)
+        corner_mu_a = np.exp(CORNER_MU)
+        cn_h = 1.0 / CORNER_ALPHA
+        cp_h = cn_h / (cn_h + corner_mu_h)
+        cn_a = 1.0 / CORNER_ALPHA
+        cp_a = cn_a / (cn_a + corner_mu_a)
+        hc = int(nbinom_dist.rvs(cn_h, cp_h, random_state=rng))
+        ac = int(nbinom_dist.rvs(cn_a, cp_a, random_state=rng))
+
+        # Generate synthetic card counts: yellows (NB2), reds (Poisson), bp = 10*Y + 25*R
+        ref_idx = rng.integers(0, len(REFEREES))
+        ref_name = REFEREES[ref_idx]
+        ref_eff = REF_EFFECT[ref_idx]
+        # Yellows from NB2
+        yellow_mu_h = np.exp(YELLOW_MU + CARD_GAMMA + ref_eff)
+        yellow_mu_a = np.exp(YELLOW_MU + ref_eff)
+        yn_h = 1.0 / YELLOW_ALPHA
+        yp_h = yn_h / (yn_h + yellow_mu_h)
+        yn_a = 1.0 / YELLOW_ALPHA
+        yp_a = yn_a / (yn_a + yellow_mu_a)
+        h_yellows = int(nbinom_dist.rvs(yn_h, yp_h, random_state=rng))
+        a_yellows = int(nbinom_dist.rvs(yn_a, yp_a, random_state=rng))
+        # Reds from Poisson (alpha~0)
+        red_mu_h = np.exp(RED_MU + CARD_GAMMA + ref_eff)
+        red_mu_a = np.exp(RED_MU + ref_eff)
+        h_reds = int(rng.poisson(red_mu_h))
+        a_reds = int(rng.poisson(red_mu_a))
+        h_bp = 10 * h_yellows + 25 * h_reds
+        a_bp = 10 * a_yellows + 25 * a_reds
+
         rows.append({
             "date": match_dates[idx],
             "season": season,
@@ -106,6 +150,15 @@ def _generate_season_matches(
             "away_goals": ag,
             "ftr": ftr,
             "source_row_raw": raw_json,
+            "home_corners": hc,
+            "away_corners": ac,
+            "home_yellows": h_yellows,
+            "away_yellows": a_yellows,
+            "home_reds": h_reds,
+            "away_reds": a_reds,
+            "home_booking_points": h_bp,
+            "away_booking_points": a_bp,
+            "referee": ref_name,
         })
 
     return rows
@@ -116,12 +169,64 @@ def multi_season_df() -> pd.DataFrame:
     """Generate a multi-season synthetic DataFrame (6 teams, 2019-20 to 2025-26).
 
     Each season has 30 matches (6 teams, each pair plays once in each direction).
-    Total: 210 matches across 7 seasons.
+    A promoted team "Golf" appears only in held-out seasons (2024-25, 2025-26)
+    to exercise the fallback-for-missing-team logic.
+    Total: 210 regular + 2 promoted = 212 matches across 7 seasons.
     """
     rng = np.random.default_rng(42)
     all_rows = []
     for season in SEASON_RANGES:
         all_rows.extend(_generate_season_matches(season, rng))
+
+    # Add a promoted team "Golf" in each held-out season. Golf has never
+    # appeared in training, so the harness must use fallback strengths.
+    promoted_matches = [
+        {
+            "date": date(2024, 8, 17),
+            "season": "2024-25",
+            "home_team": "Golf",
+            "away_team": "Alpha",
+            "home_goals": 1,
+            "away_goals": 2,
+            "ftr": "A",
+            "source_row_raw": json.dumps({
+                "PSCH": 3.50, "PSCD": 3.20, "PSCA": 2.10,
+                "AvgCH": 3.60, "AvgCD": 3.30, "AvgCA": 2.15,
+            }),
+            "home_corners": 4,
+            "away_corners": 7,
+            "home_yellows": 2,
+            "away_yellows": 1,
+            "home_reds": 0,
+            "away_reds": 1,
+            "home_booking_points": 20,
+            "away_booking_points": 35,
+            "referee": "Smith",
+        },
+        {
+            "date": date(2025, 8, 16),
+            "season": "2025-26",
+            "home_team": "Alpha",
+            "away_team": "Golf",
+            "home_goals": 3,
+            "away_goals": 0,
+            "ftr": "H",
+            "source_row_raw": json.dumps({
+                "PSCH": 1.80, "PSCD": 3.40, "PSCA": 4.50,
+                "AvgCH": 1.85, "AvgCD": 3.50, "AvgCA": 4.60,
+            }),
+            "home_corners": 8,
+            "away_corners": 3,
+            "home_yellows": 2,
+            "away_yellows": 3,
+            "home_reds": 0,
+            "away_reds": 0,
+            "home_booking_points": 20,
+            "away_booking_points": 30,
+            "referee": "Jones",
+        },
+    ]
+    all_rows.extend(promoted_matches)
 
     df = pd.DataFrame(all_rows)
     df["date"] = pd.to_datetime(df["date"])

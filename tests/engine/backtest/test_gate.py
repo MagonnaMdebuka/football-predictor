@@ -35,7 +35,7 @@ def _season_metrics(
     return SeasonMetrics(
         season="combined",
         model=model, uniform=_ms(), base_rate=base_rate,
-        independent_poisson=indep, bookmaker=bookmaker,
+        independent_poisson=indep, ablation=None, bookmaker=bookmaker,
         bookmaker_exclusion_count=0, early_season=None,
     )
 

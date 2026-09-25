@@ -19,14 +19,17 @@ from services.engine.backtest.types import (
     BacktestConfig,
     BacktestReport,
     BookmakerOddsCols,
+    CountCalibrationSummary,
+    CountMetricSummary,
     GateDetail,
+    GoalCalibration,
     MatchPrediction,
     MetricSet,
     SeasonMetrics,
 )
 
 FLOAT_PRECISION = 10
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "2.0.0"
 
 
 class _DeterministicEncoder(json.JSONEncoder):
@@ -80,28 +83,35 @@ def deserialise_report(json_str: str) -> BacktestReport:
     """Deserialise a JSON string back to a BacktestReport."""
     d = json.loads(json_str)
 
+    cfg_d = d["config"]
     config = BacktestConfig(
-        held_out_seasons=tuple(d["config"]["held_out_seasons"]),
-        training_start_season=d["config"]["training_start_season"],
-        xi=d["config"]["xi"],
-        refit_step=d["config"]["refit_step"],
-        weekly_refit_day=d["config"]["weekly_refit_day"],
-        rho_bounds=tuple(d["config"]["rho_bounds"]),
-        max_goals=d["config"]["max_goals"],
-        seed=d["config"]["seed"],
-        bookmaker_odds_cols=BookmakerOddsCols(**d["config"]["bookmaker_odds_cols"]),
+        held_out_seasons=tuple(cfg_d["held_out_seasons"]),
+        training_start_season=cfg_d["training_start_season"],
+        xi=cfg_d["xi"],
+        refit_step=cfg_d["refit_step"],
+        weekly_refit_day=cfg_d["weekly_refit_day"],
+        rho_bounds=tuple(cfg_d["rho_bounds"]),
+        max_goals=cfg_d["max_goals"],
+        seed=cfg_d["seed"],
+        bookmaker_odds_cols=BookmakerOddsCols(**cfg_d["bookmaker_odds_cols"]),
+        league_code=cfg_d.get("league_code"),
+        corners_xi=cfg_d.get("corners_xi"),
+        cards_xi=cfg_d.get("cards_xi"),
+        min_referee_matches=cfg_d.get("min_referee_matches", 20),
     )
 
     def _to_metric_set(md: dict) -> MetricSet:
         return MetricSet(**md)
 
     def _to_season_metrics(sd: dict) -> SeasonMetrics:
+        ablation_data = sd.get("ablation")
         return SeasonMetrics(
             season=sd["season"],
             model=_to_metric_set(sd["model"]),
             uniform=_to_metric_set(sd["uniform"]),
             base_rate=_to_metric_set(sd["base_rate"]),
             independent_poisson=_to_metric_set(sd["independent_poisson"]),
+            ablation=_to_metric_set(ablation_data) if ablation_data else None,
             bookmaker=_to_metric_set(sd["bookmaker"]) if sd["bookmaker"] else None,
             bookmaker_exclusion_count=sd["bookmaker_exclusion_count"],
             early_season=_to_metric_set(sd["early_season"]) if sd["early_season"] else None,
@@ -115,8 +125,51 @@ def deserialise_report(json_str: str) -> BacktestReport:
         else None
     )
 
-    predictions = [MatchPrediction(**p) for p in d["predictions"]]
+    pred_defaults = {
+        "fallback_teams": [],
+        "ablation_home": 0.0,
+        "ablation_draw": 0.0,
+        "ablation_away": 0.0,
+        "lambda_home": 0.0,
+        "lambda_away": 0.0,
+    }
+    predictions = [
+        MatchPrediction(**{**pred_defaults, **p})
+        for p in d["predictions"]
+    ]
     gate_details = [GateDetail(**g) for g in d["gate_details"]]
+
+    goal_cal_data = d.get("goal_calibration")
+    goal_cal = GoalCalibration(**goal_cal_data) if goal_cal_data else None
+
+    # Count model fields (backward compatible — absent in v1.0.0 reports)
+    corner_preds = d.get("corner_predictions", [])
+    card_preds = d.get("card_predictions", [])
+
+    def _to_count_metrics(data: dict | None) -> CountMetricSummary | None:
+        if data is None:
+            return None
+        # Convert string keys back to float for per_line_brier
+        plb = {float(k): v for k, v in data["per_line_brier"].items()}
+        return CountMetricSummary(
+            mean_brier=data["mean_brier"],
+            per_line_brier=plb,
+            n_predictions=data["n_predictions"],
+            mean_predicted_total=data["mean_predicted_total"],
+            mean_actual_total=data["mean_actual_total"],
+        )
+
+    def _to_count_cal(data: dict | None) -> CountCalibrationSummary | None:
+        if data is None:
+            return None
+        return CountCalibrationSummary(**data)
+
+    corner_metrics = _to_count_metrics(d.get("corner_metrics"))
+    card_metrics = _to_count_metrics(d.get("card_metrics"))
+    corner_cal = _to_count_cal(d.get("corner_calibration"))
+    card_cal = _to_count_cal(d.get("card_calibration"))
+    corner_gate_details = [GateDetail(**g) for g in d.get("corner_gate_details", [])]
+    card_gate_details = [GateDetail(**g) for g in d.get("card_gate_details", [])]
 
     return BacktestReport(
         schema_version=d["schema_version"],
@@ -129,6 +182,18 @@ def deserialise_report(json_str: str) -> BacktestReport:
         predictions=predictions,
         gate_passed=d["gate_passed"],
         gate_details=gate_details,
+        baseline_configs=d.get("baseline_configs", {}),
+        goal_calibration=goal_cal,
+        corner_predictions=corner_preds,
+        card_predictions=card_preds,
+        corner_metrics=corner_metrics,
+        card_metrics=card_metrics,
+        corner_calibration=corner_cal,
+        card_calibration=card_cal,
+        corner_gate_passed=d.get("corner_gate_passed"),
+        card_gate_passed=d.get("card_gate_passed"),
+        corner_gate_details=corner_gate_details,
+        card_gate_details=card_gate_details,
     )
 
 

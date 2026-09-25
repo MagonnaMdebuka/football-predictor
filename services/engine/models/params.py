@@ -14,10 +14,10 @@ class DixonColesParams:
 
     Attributes:
         teams: ordered list of team names (length n)
-        mu: home-advantage intercept
+        mu: league scoring-rate intercept (appears in both home and away)
         attack: attack strength per team (length n, sums to zero)
         defence: defence weakness per team (length n, sums to zero)
-        gamma: overall scoring-rate parameter
+        gamma: home-advantage parameter (home only)
         rho: dependence parameter for low-score correction
     """
 
@@ -43,17 +43,22 @@ def pack(params: DixonColesParams) -> NDArray[np.float64]:
     """Flatten parameters into a 1-D vector for the optimiser.
 
     Vector layout (length 2n + 1):
-        [mu, attack_0..attack_{n-2}, defence_0..defence_{n-2}, gamma, rho]
+        [gamma, attack_0..attack_{n-2}, defence_0..defence_{n-2}, mu, rho]
+
+    gamma (home-advantage, home-only) is at vec[0]; mu (scoring-rate
+    intercept, both lambdas) is at vec[2n-1]. This layout preserves
+    the gradient structure from prior versions so that L-BFGS-B
+    convergence paths remain identical.
 
     The last team's attack/defence is omitted — derived as -sum(others)
     to enforce the sum-to-zero constraint without explicit scipy constraints.
     """
     n = len(params.teams)
     vec = np.empty(2 * n + 1, dtype=np.float64)
-    vec[0] = params.mu
+    vec[0] = params.gamma
     vec[1 : n] = params.attack[: n - 1]
     vec[n : 2 * n - 1] = params.defence[: n - 1]
-    vec[2 * n - 1] = params.gamma
+    vec[2 * n - 1] = params.mu
     vec[2 * n] = params.rho
     return vec
 
@@ -64,10 +69,10 @@ def unpack(vec: NDArray[np.float64], teams: list[str]) -> DixonColesParams:
     Derives the last team's attack/defence as -sum(others).
     """
     n = len(teams)
-    mu = float(vec[0])
+    gamma = float(vec[0])
     attack_free = vec[1:n]
     defence_free = vec[n : 2 * n - 1]
-    gamma = float(vec[2 * n - 1])
+    mu = float(vec[2 * n - 1])
     rho = float(vec[2 * n])
 
     attack = np.empty(n, dtype=np.float64)

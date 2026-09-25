@@ -23,6 +23,16 @@ from numpy.typing import NDArray
 from services.engine.backtest.baselines import (
     base_rate_from_training,
 )
+from services.engine.backtest.count_gate import run_count_gate_checks
+from services.engine.backtest.count_harness import (
+    run_compound_card_predictions,
+    run_count_predictions,
+)
+from services.engine.backtest.count_types import (
+    CountPrediction,
+    compute_count_brier,
+    compute_count_calibration,
+)
 from services.engine.backtest.gate import run_gate_checks
 from services.engine.backtest.matchday import assign_matchdays
 from services.engine.backtest.metrics import compute_metric_set
@@ -31,14 +41,45 @@ from services.engine.backtest.report import SCHEMA_VERSION, get_git_commit
 from services.engine.backtest.types import (
     BacktestConfig,
     BacktestReport,
+    CountCalibrationSummary,
+    CountMetricSummary,
+    GoalCalibration,
     MatchPrediction,
     MetricSet,
     SeasonMetrics,
 )
+from services.engine.config.league_defaults import get_league_config
 from services.engine.models.decay import time_weights
 from services.engine.models.fit import fit_dixon_coles
 from services.engine.models.grid import build_grid
-from services.engine.models.params import pack
+from services.engine.models.params import DixonColesParams, pack
+
+
+def _augment_params_with_fallback(
+    params: DixonColesParams,
+    teams_needed: list[str],
+) -> tuple[DixonColesParams, list[str]]:
+    """Return params with missing teams added at league-average strength.
+
+    Teams not in params.teams are appended with attack=0.0, defence=0.0
+    (league average). Returns the augmented params and list of fallback teams.
+    """
+    missing = [t for t in teams_needed if t not in params.teams]
+    if not missing:
+        return params, []
+
+    new_teams = list(params.teams) + missing
+    new_attack = np.concatenate([params.attack, np.zeros(len(missing))])
+    new_defence = np.concatenate([params.defence, np.zeros(len(missing))])
+
+    return DixonColesParams(
+        teams=new_teams,
+        mu=params.mu,
+        attack=new_attack,
+        defence=new_defence,
+        gamma=params.gamma,
+        rho=params.rho,
+    ), missing
 
 
 def _refit_date(match_date: pd.Timestamp, config: BacktestConfig) -> pd.Timestamp:
@@ -112,10 +153,12 @@ def _build_season_metrics(
     uniform = _compute_metrics_from_predictions(predictions, "uniform")
     base_rate = _compute_metrics_from_predictions(predictions, "base_rate")
     indep = _compute_metrics_from_predictions(predictions, "independent_poisson")
+    ablation = _compute_metrics_from_predictions(predictions, "ablation")
     bk = _compute_metrics_from_predictions(predictions, "bookmaker")
 
     bk_exclusion = sum(1 for p in predictions if p.bookmaker_home is None)
     bk_metrics = bk if bk.n_matches > 0 else None
+    ablation_metrics = ablation if ablation.n_matches > 0 else None
 
     early = None
     if early_predictions:
@@ -127,9 +170,60 @@ def _build_season_metrics(
         uniform=uniform,
         base_rate=base_rate,
         independent_poisson=indep,
+        ablation=ablation_metrics,
         bookmaker=bk_metrics,
         bookmaker_exclusion_count=bk_exclusion,
         early_season=early,
+    )
+
+
+def _compute_goal_calibration(
+    predictions: list[MatchPrediction],
+) -> GoalCalibration | None:
+    """Compute aggregate goal-calibration metrics from predictions.
+
+    Compares model-predicted goal totals (lambda_home + lambda_away) against
+    actual totals, and predicted P(over 2.5) against the observed over-2.5 rate.
+    """
+    if not predictions:
+        return None
+
+    n = len(predictions)
+
+    # Predicted mean total goals (from lambdas)
+    pred_totals = [p.lambda_home + p.lambda_away for p in predictions]
+    predicted_mean = sum(pred_totals) / n
+
+    # Actual mean total goals
+    actual_totals = [p.home_goals + p.away_goals for p in predictions]
+    actual_mean = sum(actual_totals) / n
+
+    # Predicted P(over 2.5): sum cells where i+j > 2 in each match's grid.
+    # We approximate from the independent Poisson using the lambdas, since
+    # the grid is not stored. P(total <= 2) = sum of Poisson PMFs for 0,1,2.
+    from services.engine.models.poisson import poisson_pmf
+
+    pred_o25_rates = []
+    for p in predictions:
+        p_under = 0.0
+        for total in range(3):  # 0, 1, 2
+            for h in range(total + 1):
+                a = total - h
+                p_under += float(poisson_pmf(h, p.lambda_home)) * float(
+                    poisson_pmf(a, p.lambda_away)
+                )
+        pred_o25_rates.append(1.0 - p_under)
+    predicted_o25 = sum(pred_o25_rates) / n
+
+    # Actual over-2.5 rate
+    actual_o25 = sum(1 for t in actual_totals if t > 2) / n
+
+    return GoalCalibration(
+        n_matches=n,
+        predicted_mean_total=round(predicted_mean, 4),
+        actual_mean_total=round(actual_mean, 4),
+        predicted_over_25_rate=round(predicted_o25, 4),
+        actual_over_25_rate=round(actual_o25, 4),
     )
 
 
@@ -221,9 +315,14 @@ def run_backtest(
         prev_packed = pack(fit_result.params)
         prev_teams = teams
 
-        # Fit independent Poisson (rho=0)
+        # Fit independent Poisson (rho=0, no time decay)
         indep_result = fit_dixon_coles(
-            training_df, weights=weights, rho_bounds=(0.0, 0.0),
+            training_df, weights=None, rho_bounds=(0.0, 0.0),
+        )
+
+        # Fit ablation: no time decay, rho fitted (isolates tau contribution)
+        ablation_result = fit_dixon_coles(
+            training_df, weights=None, rho_bounds=config.rho_bounds,
         )
 
         # Base rate from training
@@ -238,26 +337,35 @@ def run_backtest(
                 ht = match["home_team"]
                 at = match["away_team"]
 
-                # Skip matches involving teams not in the training data
-                # (promoted teams on their first matchday)
-                fitted_teams = fit_result.params.teams
-                if ht not in fitted_teams or at not in fitted_teams:
-                    continue
+                # Augment params for teams missing from training data
+                # (promoted teams use league-average attack=0, defence=0)
+                model_params, fallback = _augment_params_with_fallback(
+                    fit_result.params, [ht, at],
+                )
+                indep_params, _ = _augment_params_with_fallback(
+                    indep_result.params, [ht, at],
+                )
+                ablation_params, _ = _augment_params_with_fallback(
+                    ablation_result.params, [ht, at],
+                )
 
                 # Model probabilities
-                grid = build_grid(fit_result.params, ht, at)
+                grid = build_grid(model_params, ht, at)
                 model_h = grid.home_win
                 model_d = grid.draw
                 model_a = grid.away_win
 
                 # Independent Poisson probabilities
-                indep_teams = indep_result.params.teams
-                if ht not in indep_teams or at not in indep_teams:
-                    continue
-                indep_grid = build_grid(indep_result.params, ht, at)
+                indep_grid = build_grid(indep_params, ht, at)
                 indep_h = indep_grid.home_win
                 indep_d = indep_grid.draw
                 indep_a = indep_grid.away_win
+
+                # Ablation probabilities (no decay, rho fitted)
+                ablation_grid = build_grid(ablation_params, ht, at)
+                abl_h = ablation_grid.home_win
+                abl_d = ablation_grid.draw
+                abl_a = ablation_grid.away_win
 
                 # Bookmaker probabilities
                 bk_h, bk_d, bk_a = None, None, None
@@ -292,9 +400,19 @@ def run_backtest(
                     bookmaker_home=bk_h,
                     bookmaker_draw=bk_d,
                     bookmaker_away=bk_a,
+                    ablation_home=abl_h,
+                    ablation_draw=abl_d,
+                    ablation_away=abl_a,
+                    lambda_home=grid.lambda_home,
+                    lambda_away=grid.lambda_away,
                     n_training_matches=len(training_df),
+                    fallback_teams=fallback,
                 )
                 all_predictions.append(pred)
+
+    assert len(all_predictions) == len(held_out_df), (
+        f"Expected {len(held_out_df)} predictions, got {len(all_predictions)}"
+    )
 
     # Build per-season metrics
     season_predictions: dict[str, list[MatchPrediction]] = {}
@@ -318,8 +436,155 @@ def run_backtest(
     if all_early:
         early_combined = _build_season_metrics("early_season_combined", all_early)
 
+    # Goal calibration
+    goal_cal = _compute_goal_calibration(all_predictions)
+
     # Gate checks
     gate_passed, gate_details = run_gate_checks(combined)
+
+    baseline_configs = {
+        "model": {"xi": config.xi, "rho": "fitted"},
+        "independent_poisson": {"xi": 0, "rho": 0},
+        "ablation": {"xi": 0, "rho": "fitted"},
+        "base_rate": {"description": "training proportions"},
+        "uniform": {"description": "1/3 each"},
+        "bookmaker": {"description": "market closing odds"},
+    }
+
+    # Count models (corners and cards) — conditional on capability flags
+    corner_preds: list[CountPrediction] = []
+    card_preds: list[CountPrediction] = []
+    corner_metrics_summary: CountMetricSummary | None = None
+    card_metrics_summary: CountMetricSummary | None = None
+    corner_cal_summary: CountCalibrationSummary | None = None
+    card_cal_summary: CountCalibrationSummary | None = None
+    corner_gate_passed: bool | None = None
+    card_gate_passed: bool | None = None
+    corner_gate_dets: list = []
+    card_gate_dets: list = []
+
+    has_corners = False
+    has_cards = False
+    if config.league_code:
+        try:
+            league_cfg = get_league_config(config.league_code)
+            has_corners = league_cfg.has_corners
+            has_cards = league_cfg.has_cards
+        except KeyError:
+            pass
+
+    if has_corners or has_cards:
+        # Run count models using the same walk-forward dates
+        corner_prev_packed = None
+        corner_prev_teams = None
+        card_prev_yellow_packed = None
+        card_prev_yellow_teams = None
+        card_prev_red_packed = None
+        card_prev_red_teams = None
+
+        for refit_date in sorted_refit_dates:
+            pred_dates = refit_groups[refit_date]
+            cutoff = min(pred_dates)
+            training_mask = all_data["date"].dt.normalize() < cutoff
+            training_df = all_data[training_mask].copy()
+
+            if len(training_df) < 10:
+                continue
+
+            # Time decay weights for count models
+            match_dates_arr = training_df["date"].values.astype("datetime64[D]")
+            ref_date_val = pd.Timestamp(cutoff).to_pydatetime().date()
+            corners_xi = config.corners_xi if config.corners_xi is not None else config.xi
+            cards_xi = config.cards_xi if config.cards_xi is not None else config.xi
+
+            # Gather all prediction matches for this refit date
+            day_matches_list = []
+            for pred_date in pred_dates:
+                day_mask = held_out_df["date"].dt.normalize() == pred_date
+                day_matches_list.append(held_out_df[day_mask])
+            if not day_matches_list:
+                continue
+            pred_matches = pd.concat(day_matches_list)
+
+            if has_corners:
+                corner_weights = time_weights(match_dates_arr, ref_date_val, corners_xi)
+                c_preds, c_packed, c_teams = run_count_predictions(
+                    training_df, pred_matches, model_type="corners",
+                    weights=corner_weights,
+                    prev_packed=corner_prev_packed,
+                    prev_teams=corner_prev_teams,
+                )
+                corner_preds.extend(c_preds)
+                if len(c_packed) > 0:
+                    corner_prev_packed = c_packed
+                    corner_prev_teams = c_teams
+
+            if has_cards:
+                card_weights = time_weights(match_dates_arr, ref_date_val, cards_xi)
+                k_preds, yp, yt, rp, rt = run_compound_card_predictions(
+                    training_df, pred_matches,
+                    weights=card_weights,
+                    min_referee_matches=config.min_referee_matches,
+                    prev_yellow_packed=card_prev_yellow_packed,
+                    prev_yellow_teams=card_prev_yellow_teams,
+                    prev_red_packed=card_prev_red_packed,
+                    prev_red_teams=card_prev_red_teams,
+                )
+                card_preds.extend(k_preds)
+                if len(yp) > 0:
+                    card_prev_yellow_packed = yp
+                    card_prev_yellow_teams = yt
+                if len(rp) > 0:
+                    card_prev_red_packed = rp
+                    card_prev_red_teams = rt
+
+        # Compute count metrics and gates
+        if corner_preds:
+            corner_ms = compute_count_brier(corner_preds)
+            corner_metrics_summary = CountMetricSummary(
+                mean_brier=corner_ms.mean_brier,
+                per_line_brier=corner_ms.per_line_brier,
+                n_predictions=corner_ms.n_predictions,
+                mean_predicted_total=corner_ms.mean_predicted_total,
+                mean_actual_total=corner_ms.mean_actual_total,
+            )
+            corner_cal = compute_count_calibration(corner_preds)
+            if corner_cal:
+                corner_cal_summary = CountCalibrationSummary(
+                    n_predictions=corner_cal.n_predictions,
+                    predicted_mean_total=corner_cal.predicted_mean_total,
+                    actual_mean_total=corner_cal.actual_mean_total,
+                    bias=corner_cal.bias,
+                )
+            corner_gate_passed, corner_gate_dets = run_count_gate_checks(
+                corner_preds, corner_ms, "corners",
+            )
+
+        if card_preds:
+            card_ms = compute_count_brier(card_preds)
+            card_metrics_summary = CountMetricSummary(
+                mean_brier=card_ms.mean_brier,
+                per_line_brier=card_ms.per_line_brier,
+                n_predictions=card_ms.n_predictions,
+                mean_predicted_total=card_ms.mean_predicted_total,
+                mean_actual_total=card_ms.mean_actual_total,
+            )
+            card_cal = compute_count_calibration(card_preds)
+            if card_cal:
+                card_cal_summary = CountCalibrationSummary(
+                    n_predictions=card_cal.n_predictions,
+                    predicted_mean_total=card_cal.predicted_mean_total,
+                    actual_mean_total=card_cal.actual_mean_total,
+                    bias=card_cal.bias,
+                )
+            card_gate_passed, card_gate_dets = run_count_gate_checks(
+                card_preds, card_ms, "cards",
+            )
+
+    # Convert count predictions to serialisable dicts
+    from dataclasses import asdict
+    corner_pred_dicts = [asdict(p) for p in corner_preds]
+    card_pred_dicts = [asdict(p) for p in card_preds]
 
     return BacktestReport(
         schema_version=SCHEMA_VERSION,
@@ -332,4 +597,16 @@ def run_backtest(
         predictions=all_predictions,
         gate_passed=gate_passed,
         gate_details=gate_details,
+        baseline_configs=baseline_configs,
+        goal_calibration=goal_cal,
+        corner_predictions=corner_pred_dicts,
+        card_predictions=card_pred_dicts,
+        corner_metrics=corner_metrics_summary,
+        card_metrics=card_metrics_summary,
+        corner_calibration=corner_cal_summary,
+        card_calibration=card_cal_summary,
+        corner_gate_passed=corner_gate_passed,
+        card_gate_passed=card_gate_passed,
+        corner_gate_details=corner_gate_dets,
+        card_gate_details=card_gate_dets,
     )

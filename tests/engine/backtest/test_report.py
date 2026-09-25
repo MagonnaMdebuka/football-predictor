@@ -16,7 +16,10 @@ from services.engine.backtest.report import (
 from services.engine.backtest.types import (
     BacktestConfig,
     BacktestReport,
+    CountCalibrationSummary,
+    CountMetricSummary,
     GateDetail,
+    GoalCalibration,
     MatchPrediction,
     MetricSet,
     SeasonMetrics,
@@ -41,7 +44,7 @@ def _make_report() -> BacktestReport:
     ms = _make_metric_set()
     season = SeasonMetrics(
         season="2024-25", model=ms, uniform=ms, base_rate=ms,
-        independent_poisson=ms, bookmaker=None,
+        independent_poisson=ms, ablation=None, bookmaker=None,
         bookmaker_exclusion_count=5, early_season=None,
     )
     pred = MatchPrediction(
@@ -147,6 +150,96 @@ class TestFilenameGeneration:
     def test_contains_timestamp(self):
         filename = generate_filename(git_commit="def5678")
         assert "T" in filename  # ISO format has T separator
+
+
+class TestCountDataRoundTrip:
+    """Round-trip with count model data."""
+
+    def test_round_trip_with_count_fields(self):
+        """Report with count data should serialise and deserialise correctly."""
+        report = _make_report()
+        corner_metrics = CountMetricSummary(
+            mean_brier=0.225,
+            per_line_brier={7.5: 0.21, 8.5: 0.22, 9.5: 0.24},
+            n_predictions=50,
+            mean_predicted_total=10.5,
+            mean_actual_total=10.3,
+        )
+        corner_cal = CountCalibrationSummary(
+            n_predictions=50,
+            predicted_mean_total=10.5,
+            actual_mean_total=10.3,
+            bias=0.2,
+        )
+        corner_gate = GateDetail(
+            name="corners_brier_vs_baseline", passed=True, message="OK"
+        )
+        # Compound card prediction with yellow/red fields
+        card_pred = {
+            "mu_home": 32.5, "mu_away": 28.0,
+            "mu_yellow_home": 3.0, "mu_yellow_away": 2.5,
+            "alpha_yellow": 0.15,
+            "mu_red_home": 0.1, "mu_red_away": 0.08,
+        }
+        # Create a new report with count fields
+        from dataclasses import replace
+        report_with_counts = replace(
+            report,
+            corner_predictions=[{"mu_home": 5.0, "mu_away": 4.5}],
+            card_predictions=[card_pred],
+            corner_metrics=corner_metrics,
+            corner_calibration=corner_cal,
+            corner_gate_passed=True,
+            corner_gate_details=[corner_gate],
+        )
+        json_str = serialise_report(report_with_counts)
+        restored = deserialise_report(json_str)
+
+        assert restored.corner_metrics is not None
+        assert restored.corner_metrics.mean_brier == 0.225
+        assert 7.5 in restored.corner_metrics.per_line_brier
+        assert restored.corner_calibration is not None
+        assert restored.corner_calibration.bias == 0.2
+        assert restored.corner_gate_passed is True
+        assert len(restored.corner_gate_details) == 1
+        assert restored.corner_gate_details[0].passed is True
+        assert len(restored.corner_predictions) == 1
+        # Compound card fields round-trip
+        assert len(restored.card_predictions) == 1
+        assert restored.card_predictions[0]["mu_yellow_home"] == 3.0
+        assert restored.card_predictions[0]["mu_red_home"] == 0.1
+
+    def test_backward_compat_no_count_fields(self):
+        """v1.0.0 report without count fields should deserialise cleanly."""
+        report = _make_report()
+        json_str = serialise_report(report)
+        # Simulate v1 by removing count fields from JSON
+        d = json.loads(json_str)
+        for key in [
+            "corner_predictions", "card_predictions",
+            "corner_metrics", "card_metrics",
+            "corner_calibration", "card_calibration",
+            "corner_gate_passed", "card_gate_passed",
+            "corner_gate_details", "card_gate_details",
+            "league_code", "corners_xi", "cards_xi", "min_referee_matches",
+        ]:
+            d.pop(key, None)
+            if "config" in d and key in d.get("config", {}):
+                d["config"].pop(key, None)
+        json_str_v1 = json.dumps(d, sort_keys=True, indent=2) + "\n"
+        restored = deserialise_report(json_str_v1)
+
+        assert restored.corner_metrics is None
+        assert restored.card_metrics is None
+        assert restored.corner_predictions == []
+        assert restored.card_predictions == []
+        assert restored.corner_gate_passed is None
+        assert restored.card_gate_passed is None
+        assert restored.corner_gate_details == []
+        assert restored.card_gate_details == []
+
+    def test_schema_version_is_2(self):
+        assert SCHEMA_VERSION == "2.0.0"
 
 
 class TestReportsIdentical:

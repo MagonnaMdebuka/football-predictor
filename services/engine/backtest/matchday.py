@@ -14,14 +14,17 @@ EARLY_SEASON_MATCHDAYS = 6
 
 
 def assign_matchdays(df: pd.DataFrame, season_col: str = "season") -> pd.Series:
-    """Assign matchday numbers within each season.
+    """Assign matchday (round) numbers within each season.
 
-    Matchdays are numbered sequentially based on distinct dates within
-    each season. All matches on the same date in the same season share
-    the same matchday number.
+    A matchday is a fixture round: the set of matches where each team
+    plays at most once. Matches are sorted by date within each season
+    and accumulated into the current round. When a team appears for the
+    second time, a new round begins.
+
+    Requires columns: 'date', 'home_team', 'away_team', and *season_col*.
 
     Args:
-        df: DataFrame with 'date' and season_col columns
+        df: DataFrame with 'date', 'home_team', 'away_team', and season_col
         season_col: name of the season column
 
     Returns:
@@ -29,12 +32,20 @@ def assign_matchdays(df: pd.DataFrame, season_col: str = "season") -> pd.Series:
     """
     result = pd.Series(0, index=df.index, dtype=np.int64)
 
-    for season, group in df.groupby(season_col):
-        dates = group["date"].dt.normalize()
-        unique_dates = sorted(dates.unique())
-        date_to_matchday = {d: i + 1 for i, d in enumerate(unique_dates)}
-        matchdays = dates.map(date_to_matchday)
-        result.loc[group.index] = matchdays.values
+    for _season, group in df.groupby(season_col):
+        sorted_group = group.sort_values("date")
+        matchday = 1
+        seen_teams: set[str] = set()
+
+        for idx, row in sorted_group.iterrows():
+            ht = row["home_team"]
+            at = row["away_team"]
+            if ht in seen_teams or at in seen_teams:
+                matchday += 1
+                seen_teams = set()
+            seen_teams.add(ht)
+            seen_teams.add(at)
+            result.loc[idx] = matchday
 
     return result
 
@@ -55,14 +66,16 @@ def is_early_season(matchdays: pd.Series, threshold: int = EARLY_SEASON_MATCHDAY
 def season_matchday_counts(df: pd.DataFrame, season_col: str = "season") -> dict[str, int]:
     """Count the number of distinct matchdays per season.
 
+    Uses team-repetition-based matchday assignment to count rounds.
+
     Args:
-        df: DataFrame with 'date' and season_col columns
+        df: DataFrame with 'date', 'home_team', 'away_team', and season_col
 
     Returns:
         Dict mapping season to matchday count.
     """
+    matchdays = assign_matchdays(df, season_col)
     counts = {}
     for season, group in df.groupby(season_col):
-        unique_dates = group["date"].dt.normalize().nunique()
-        counts[str(season)] = int(unique_dates)
+        counts[str(season)] = int(matchdays.loc[group.index].max())
     return counts

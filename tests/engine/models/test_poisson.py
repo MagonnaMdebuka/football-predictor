@@ -8,20 +8,20 @@ from services.engine.models.poisson import goal_expectancy, poisson_log_pmf, poi
 
 class TestGoalExpectancy:
     def test_home_advantage_increases_lambda(self):
-        """Positive mu should give lambda_home > lambda_away for equal teams."""
+        """Positive gamma should give lambda_home > lambda_away for equal teams."""
         lam_h, lam_a = goal_expectancy(
             attack_h=0.0, defence_a=0.0,
             attack_a=0.0, defence_h=0.0,
-            mu=0.3, gamma=0.0,
+            mu=0.0, gamma=0.3,
         )
         assert lam_h[0] > lam_a[0]
 
     def test_symmetric_when_no_home_advantage(self):
-        """With mu=0 and identical team params, lambda_home == lambda_away."""
+        """With gamma=0 and identical team params, lambda_home == lambda_away."""
         lam_h, lam_a = goal_expectancy(
             attack_h=0.1, defence_a=-0.1,
             attack_a=0.1, defence_h=-0.1,
-            mu=0.0, gamma=0.2,
+            mu=0.2, gamma=0.0,
         )
         assert lam_h[0] == pytest.approx(lam_a[0])
 

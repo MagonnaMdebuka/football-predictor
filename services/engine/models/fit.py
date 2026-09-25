@@ -68,8 +68,8 @@ def fit_dixon_coles(
         x0_vec = x0.copy()
     else:
         x0_vec = np.zeros(vec_len, dtype=np.float64)
-        x0_vec[0] = 0.25       # mu (home advantage)
-        x0_vec[2 * n - 1] = 0.20  # gamma (scoring rate)
+        x0_vec[0] = 0.25       # gamma (home advantage) — vec[0]
+        x0_vec[2 * n - 1] = 0.20  # mu (league scoring rate) — vec[2n-1]
         x0_vec[2 * n] = -0.10     # rho (dependence)
 
     # Bounds: only rho is bounded; everything else is free

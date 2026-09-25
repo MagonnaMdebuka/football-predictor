@@ -18,15 +18,16 @@ def goal_expectancy(
     """Compute expected goals for home and away teams.
 
     lambda_home = exp(mu + gamma + attack_h + defence_a)
-    lambda_away = exp(gamma + attack_a + defence_h)
+    lambda_away = exp(mu + attack_a + defence_h)
 
-    mu captures home advantage; gamma is the overall scoring rate.
+    mu is the league scoring-rate intercept (appears in both);
+    gamma is the home-advantage parameter (home only).
 
     Returns:
         (lambda_home, lambda_away) as numpy arrays.
     """
     lambda_home = np.exp(mu + gamma + attack_h + defence_a)
-    lambda_away = np.exp(gamma + attack_a + defence_h)
+    lambda_away = np.exp(mu + attack_a + defence_h)
     return np.atleast_1d(lambda_home), np.atleast_1d(lambda_away)
 
 

@@ -1,9 +1,11 @@
 # Football Predictor — Claude Code Instructions
 
 ## Current Phase
-Phase 3 (Backtest) — walk-forward harness complete (~121 tests passing).
-Phase 2 (Engine) — Dixon-Coles model complete (64 tests passing).
-Phase 1 (Ingest) — complete (87 tests passing).
+Phase 5 (Corners & Cards) — compound card model (NB2 yellows + Poisson reds), gate line filtering, relative too-good alarm (589 tests passing).
+Phase 4 (Markets) — goals-derived markets complete.
+Phase 3 (Backtest) — walk-forward harness complete.
+Phase 2 (Engine) — Dixon-Coles model complete.
+Phase 1 (Ingest) — complete.
 
 ## Project Layout
 ```

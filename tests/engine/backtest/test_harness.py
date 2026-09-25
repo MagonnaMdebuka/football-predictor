@@ -173,7 +173,7 @@ class TestRunBacktest:
 
     def test_schema_version_set(self, multi_season_df, default_config):
         report = run_backtest(multi_season_df, default_config)
-        assert report.schema_version == "1.0.0"
+        assert report.schema_version == "2.0.0"
 
     def test_weekly_refit_produces_predictions(self, multi_season_df):
         config = BacktestConfig(
@@ -221,6 +221,41 @@ class TestRunBacktest:
         assert report.combined.model.rps > 0
 
 
+class TestFallbackForPromotedTeams:
+    """Promoted teams use league-average strengths instead of being skipped."""
+
+    def test_prediction_count_equals_held_out_count(self, multi_season_df, default_config):
+        """Every held-out match gets a prediction — none silently dropped."""
+        report = run_backtest(
+            multi_season_df, default_config, created_at="2026-01-01T00:00:00Z",
+        )
+        held_out_count = multi_season_df[
+            multi_season_df["season"].isin(default_config.held_out_seasons)
+        ].shape[0]
+        assert len(report.predictions) == held_out_count
+
+    def test_promoted_team_uses_fallback(self, multi_season_df, default_config):
+        """Golf's first PL match (2024-25) uses fallback; later matches may not."""
+        report = run_backtest(
+            multi_season_df, default_config, created_at="2026-01-01T00:00:00Z",
+        )
+        golf_preds = [
+            p for p in report.predictions
+            if p.home_team == "Golf" or p.away_team == "Golf"
+        ]
+        assert len(golf_preds) >= 2
+
+        # The 2024-25 match is Golf's first ever PL appearance — fallback expected
+        first_match = [p for p in golf_preds if p.season == "2024-25"]
+        assert len(first_match) == 1
+        assert "Golf" in first_match[0].fallback_teams
+
+        # All Golf predictions should produce valid probabilities
+        for p in golf_preds:
+            total = p.model_home + p.model_draw + p.model_away
+            assert abs(total - 1.0) < 0.02
+
+
 class TestWarmStart:
     """Tests for the warm-start x0 parameter in fit_dixon_coles."""
 
@@ -251,6 +286,54 @@ class TestWarmStart:
         # Second fit with warm-start
         result2 = fit_dixon_coles(df, x0=x0)
         assert result2.converged
+
+    def test_count_models_run_when_league_set(self, multi_season_df):
+        """Corner and card models run when league_code is set with flags."""
+        config = BacktestConfig(
+            held_out_seasons=("2024-25", "2025-26"),
+            training_start_season="2019-20",
+            xi=0.0065,
+            refit_step="per_date",
+            seed=42,
+            league_code="E0",
+        )
+        report = run_backtest(multi_season_df, config)
+        assert len(report.corner_predictions) > 0
+        assert len(report.card_predictions) > 0
+        assert report.corner_metrics is not None
+        assert report.card_metrics is not None
+        assert report.corner_gate_passed is not None
+        assert report.card_gate_passed is not None
+
+        # Compound card predictions should have yellow/red fields
+        if report.card_predictions:
+            first_card = report.card_predictions[0]
+            assert "mu_yellow_home" in first_card
+            assert "mu_red_home" in first_card
+
+    def test_count_models_skip_when_no_league(self, multi_season_df, default_config):
+        """Count models are skipped when league_code is None."""
+        report = run_backtest(multi_season_df, default_config)
+        assert report.corner_predictions == []
+        assert report.card_predictions == []
+        assert report.corner_metrics is None
+        assert report.card_metrics is None
+        assert report.corner_gate_passed is None
+        assert report.card_gate_passed is None
+
+    def test_goals_gate_unchanged_with_count_models(self, multi_season_df):
+        """Goals gate details should have same count with or without count models."""
+        config_no_count = BacktestConfig(
+            held_out_seasons=("2024-25", "2025-26"),
+            training_start_season="2019-20",
+            xi=0.0065,
+            seed=42,
+        )
+        report = run_backtest(
+            multi_season_df, config_no_count, created_at="2026-01-01T00:00:00Z",
+        )
+        # Goals gate should have 6 checks regardless
+        assert len(report.gate_details) == 6
 
     def test_warm_and_cold_start_agree(self):
         """Cold-start and warm-start fits for the same data must agree.

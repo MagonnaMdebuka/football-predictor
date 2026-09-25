@@ -36,6 +36,10 @@ class BacktestConfig:
         max_goals: grid size for score predictions
         seed: random seed for reproducibility
         bookmaker_odds_cols: column names for extracting bookmaker odds
+        league_code: league code for capability flags (None = goals only)
+        corners_xi: time-decay rate for corners model (None = use goals xi)
+        cards_xi: time-decay rate for cards model (None = use goals xi)
+        min_referee_matches: minimum matches for referee effect in cards model
     """
 
     held_out_seasons: tuple[str, ...]
@@ -47,6 +51,10 @@ class BacktestConfig:
     max_goals: int = 11
     seed: int = 42
     bookmaker_odds_cols: BookmakerOddsCols = field(default_factory=BookmakerOddsCols)
+    league_code: str | None = None
+    corners_xi: float | None = None
+    cards_xi: float | None = None
+    min_referee_matches: int = 20
 
 
 @dataclass(frozen=True)
@@ -126,7 +134,13 @@ class MatchPrediction:
     bookmaker_home: float | None
     bookmaker_draw: float | None
     bookmaker_away: float | None
-    n_training_matches: int
+    ablation_home: float = 0.0
+    ablation_draw: float = 0.0
+    ablation_away: float = 0.0
+    lambda_home: float = 0.0
+    lambda_away: float = 0.0
+    n_training_matches: int = 0
+    fallback_teams: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -149,6 +163,7 @@ class SeasonMetrics:
     uniform: MetricSet
     base_rate: MetricSet
     independent_poisson: MetricSet
+    ablation: MetricSet | None
     bookmaker: MetricSet | None
     bookmaker_exclusion_count: int
     early_season: MetricSet | None
@@ -161,6 +176,64 @@ class GateDetail:
     name: str
     passed: bool
     message: str
+
+
+@dataclass(frozen=True)
+class GoalCalibration:
+    """Aggregate goal-calibration metrics across held-out matches.
+
+    Compares predicted goal rates to actual rates to detect systematic
+    bias that would propagate to every total-based market.
+
+    Attributes:
+        n_matches: number of matches evaluated
+        predicted_mean_total: mean of (lambda_home + lambda_away)
+        actual_mean_total: mean of (home_goals + away_goals)
+        predicted_over_25_rate: mean of model P(over 2.5)
+        actual_over_25_rate: fraction of matches with total goals > 2.5
+    """
+
+    n_matches: int
+    predicted_mean_total: float
+    actual_mean_total: float
+    predicted_over_25_rate: float
+    actual_over_25_rate: float
+
+
+@dataclass(frozen=True)
+class CountMetricSummary:
+    """Serialisable summary of count model metrics and gate results.
+
+    Attributes:
+        mean_brier: mean Brier score across all O/U lines
+        per_line_brier: dict mapping line -> Brier score
+        n_predictions: number of predictions evaluated
+        mean_predicted_total: mean predicted total
+        mean_actual_total: mean actual total
+    """
+
+    mean_brier: float
+    per_line_brier: dict[float, float]
+    n_predictions: int
+    mean_predicted_total: float
+    mean_actual_total: float
+
+
+@dataclass(frozen=True)
+class CountCalibrationSummary:
+    """Serialisable count calibration summary.
+
+    Attributes:
+        n_predictions: number of predictions evaluated
+        predicted_mean_total: mean of (mu_home + mu_away)
+        actual_mean_total: mean of (actual_home + actual_away)
+        bias: predicted - actual
+    """
+
+    n_predictions: int
+    predicted_mean_total: float
+    actual_mean_total: float
+    bias: float
 
 
 @dataclass(frozen=True)
@@ -178,6 +251,17 @@ class BacktestReport:
         predictions: per-match prediction records
         gate_passed: whether all gate checks passed
         gate_details: individual gate check results
+        goal_calibration: aggregate goal-scoring calibration check
+        corner_predictions: per-match corner predictions
+        card_predictions: per-match card predictions
+        corner_metrics: corner model evaluation metrics
+        card_metrics: card model evaluation metrics
+        corner_calibration: corner calibration summary
+        card_calibration: card calibration summary
+        corner_gate_passed: whether corner gate checks passed
+        card_gate_passed: whether card gate checks passed
+        corner_gate_details: corner gate check results
+        card_gate_details: card gate check results
     """
 
     schema_version: str
@@ -190,3 +274,15 @@ class BacktestReport:
     predictions: list[MatchPrediction]
     gate_passed: bool
     gate_details: list[GateDetail]
+    baseline_configs: dict = field(default_factory=dict)
+    goal_calibration: GoalCalibration | None = None
+    corner_predictions: list = field(default_factory=list)
+    card_predictions: list = field(default_factory=list)
+    corner_metrics: CountMetricSummary | None = None
+    card_metrics: CountMetricSummary | None = None
+    corner_calibration: CountCalibrationSummary | None = None
+    card_calibration: CountCalibrationSummary | None = None
+    corner_gate_passed: bool | None = None
+    card_gate_passed: bool | None = None
+    corner_gate_details: list[GateDetail] = field(default_factory=list)
+    card_gate_details: list[GateDetail] = field(default_factory=list)
