@@ -157,6 +157,21 @@ def _load_csv(path: str) -> pd.DataFrame:
     else:
         df["season"] = raw.get("season", raw.get("Season"))
 
+    # Half-time goals (optional — used by HT model)
+    if "HTHG" in raw.columns and "HTAG" in raw.columns:
+        df["ht_home_goals"] = pd.to_numeric(raw["HTHG"], errors="coerce")
+        df["ht_away_goals"] = pd.to_numeric(raw["HTAG"], errors="coerce")
+
+    # Count model columns (optional)
+    count_cols = {
+        "HC": "home_corners", "AC": "away_corners",
+        "HY": "home_yellows", "AY": "away_yellows",
+        "HR": "home_reds", "AR": "away_reds",
+    }
+    for csv_col, df_col in count_cols.items():
+        if csv_col in raw.columns:
+            df[df_col] = pd.to_numeric(raw[csv_col], errors="coerce")
+
     # Carry through source row as JSON for bookmaker odds
     odds_cols = ["PSCH", "PSCD", "PSCA", "AvgCH", "AvgCD", "AvgCA"]
     available_odds = [c for c in odds_cols if c in raw.columns]

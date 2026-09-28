@@ -28,6 +28,8 @@ from services.engine.backtest.count_harness import (
     run_compound_card_predictions,
     run_count_predictions,
 )
+from services.engine.backtest.halftime_gate import run_halftime_gate_checks
+from services.engine.backtest.halftime_harness import run_halftime_predictions
 from services.engine.backtest.count_types import (
     CountPrediction,
     compute_count_brier,
@@ -44,6 +46,8 @@ from services.engine.backtest.types import (
     CountCalibrationSummary,
     CountMetricSummary,
     GoalCalibration,
+    HalfTimeMetricSummary,
+    HalfTimePrediction,
     MatchPrediction,
     MetricSet,
     SeasonMetrics,
@@ -588,6 +592,72 @@ def run_backtest(
                 card_preds, card_ms, "cards",
             )
 
+    # Half-time models — conditional on has_halves capability flag
+    halftime_preds: list[HalfTimePrediction] = []
+    halftime_metrics_summary: HalfTimeMetricSummary | None = None
+    halftime_gate_passed: bool | None = None
+    halftime_gate_dets: list = []
+
+    has_halves = False
+    if config.league_code:
+        try:
+            league_cfg = get_league_config(config.league_code)
+            has_halves = league_cfg.has_halves
+        except KeyError:
+            pass
+
+    if has_halves:
+        ht_prev_packed = None
+        ht_prev_teams = None
+        sh_prev_packed = None
+        sh_prev_teams = None
+
+        for refit_date in sorted_refit_dates:
+            pred_dates = refit_groups[refit_date]
+            cutoff = min(pred_dates)
+            training_mask = all_data["date"].dt.normalize() < cutoff
+            training_df = all_data[training_mask].copy()
+
+            if len(training_df) < 10:
+                continue
+
+            # Time decay weights
+            match_dates_arr = training_df["date"].values.astype("datetime64[D]")
+            ref_date_val = pd.Timestamp(cutoff).to_pydatetime().date()
+            halves_xi = config.halves_xi if config.halves_xi is not None else config.xi
+
+            ht_weights = time_weights(match_dates_arr, ref_date_val, halves_xi)
+
+            # Gather prediction matches for this refit date
+            day_matches_list = []
+            for pred_date in pred_dates:
+                day_mask = held_out_df["date"].dt.normalize() == pred_date
+                day_matches_list.append(held_out_df[day_mask])
+            if not day_matches_list:
+                continue
+            pred_matches = pd.concat(day_matches_list)
+
+            ht_preds, ht_packed, ht_teams, sh_packed, sh_teams = run_halftime_predictions(
+                training_df, pred_matches,
+                weights=ht_weights,
+                prev_ht_packed=ht_prev_packed,
+                prev_ht_teams=ht_prev_teams,
+                prev_sh_packed=sh_prev_packed,
+                prev_sh_teams=sh_prev_teams,
+            )
+            halftime_preds.extend(ht_preds)
+            if len(ht_packed) > 0:
+                ht_prev_packed = ht_packed
+                ht_prev_teams = ht_teams
+            if len(sh_packed) > 0:
+                sh_prev_packed = sh_packed
+                sh_prev_teams = sh_teams
+
+        if halftime_preds:
+            halftime_metrics_summary, halftime_gate_passed, halftime_gate_dets = (
+                run_halftime_gate_checks(halftime_preds)
+            )
+
     # Convert count predictions to serialisable dicts
     from dataclasses import asdict
     corner_pred_dicts = [asdict(p) for p in corner_preds]
@@ -616,4 +686,8 @@ def run_backtest(
         card_gate_passed=card_gate_passed,
         corner_gate_details=corner_gate_dets,
         card_gate_details=card_gate_dets,
+        halftime_predictions=halftime_preds,
+        halftime_metrics=halftime_metrics_summary,
+        halftime_gate_passed=halftime_gate_passed,
+        halftime_gate_details=halftime_gate_dets,
     )

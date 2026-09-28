@@ -141,6 +141,10 @@ def _generate_season_matches(
         h_bp = 10 * h_yellows + 25 * h_reds
         a_bp = 10 * a_yellows + 25 * a_reds
 
+        # Generate half-time goals (must be <= full-time goals)
+        ht_hg = int(rng.integers(0, hg + 1))
+        ht_ag = int(rng.integers(0, ag + 1))
+
         rows.append({
             "date": match_dates[idx],
             "season": season,
@@ -159,6 +163,8 @@ def _generate_season_matches(
             "home_booking_points": h_bp,
             "away_booking_points": a_bp,
             "referee": ref_name,
+            "ht_home_goals": ht_hg,
+            "ht_away_goals": ht_ag,
         })
 
     return rows
@@ -202,6 +208,8 @@ def multi_season_df() -> pd.DataFrame:
             "home_booking_points": 20,
             "away_booking_points": 35,
             "referee": "Smith",
+            "ht_home_goals": 0,
+            "ht_away_goals": 1,
         },
         {
             "date": date(2025, 8, 16),
@@ -224,6 +232,8 @@ def multi_season_df() -> pd.DataFrame:
             "home_booking_points": 20,
             "away_booking_points": 30,
             "referee": "Jones",
+            "ht_home_goals": 1,
+            "ht_away_goals": 0,
         },
     ]
     all_rows.extend(promoted_matches)

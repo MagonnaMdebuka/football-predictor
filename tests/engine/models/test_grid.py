@@ -106,3 +106,32 @@ class TestMostLikelyScore:
         assert 0 <= h < MAX_GOALS
         assert 0 <= a < MAX_GOALS
         assert p == pytest.approx(sg.grid[h, a])
+
+
+class TestMaxGoalsParameter:
+    @pytest.fixture
+    def ht_params(self) -> DixonColesParams:
+        """Lower lambdas typical of half-time scoring rates."""
+        return DixonColesParams(
+            teams=TEAMS,
+            mu=-0.60,
+            attack=np.array([0.15, -0.05, 0.10, -0.20]),
+            defence=np.array([-0.10, 0.05, 0.0, 0.05]),
+            gamma=0.10,
+            rho=-0.05,
+        )
+
+    def test_7x7_grid_shape(self, ht_params: DixonColesParams):
+        sg = build_grid(ht_params, "Arsenal", "Chelsea", max_goals=7)
+        assert sg.grid.shape == (7, 7)
+
+    def test_7x7_grid_properties(self, ht_params: DixonColesParams):
+        sg = build_grid(ht_params, "Arsenal", "Chelsea", max_goals=7)
+        total = sg.home_win + sg.draw + sg.away_win
+        assert total == pytest.approx(1.0, abs=0.005)
+
+    def test_predict_scoreline_respects_grid_size(self, ht_params: DixonColesParams):
+        sg = build_grid(ht_params, "Arsenal", "Chelsea", max_goals=7)
+        assert sg.predict_scoreline(6, 0) > 0.0
+        assert sg.predict_scoreline(7, 0) == 0.0
+        assert sg.predict_scoreline(0, 7) == 0.0

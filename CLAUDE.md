@@ -1,7 +1,9 @@
 # Football Predictor — Claude Code Instructions
 
 ## Current Phase
-Phase 6 (Predict, API, Web) — complete. Predict command, API endpoints, web pages (ADR-021). 641+ tests.
+Phase 8 (Half-Time Grids, HT/FT Market, First Goal Timing) — complete. Separate HT/2H Dixon-Coles fits, 7×7 grids, 9-outcome HT/FT market, first goal timing (ADR-024). 672+ tests.
+Phase 7 (Calibration, Accuracy, Quality Badges) — complete. Calibration maps, accuracy page, model-vs-market (ADR-022).
+Phase 6 (Predict, API, Web) — complete. Predict command, API endpoints, web pages (ADR-021).
 Phase 5 (Corners & Cards) — complete. Goals ship, corners and cards do not (ADR-020).
 Phase 4 (Markets) — goals-derived markets complete.
 Phase 3 (Backtest) — walk-forward harness complete.
@@ -12,7 +14,7 @@ Phase 1 (Ingest) — complete.
 ```
 apps/web/              Next.js 15 frontend
 services/api/          FastAPI read API
-services/engine/       ingest/, models/, markets/, backtest/, predict/
+services/engine/       ingest/, models/, markets/, backtest/, predict/, calibration/
 db/migrations/         Alembic (PostgreSQL 16)
 docker-compose.yml     5 services: db, redis, api, web, worker
 run.sh                 Task runner (replaces Makefile)
@@ -46,6 +48,7 @@ run.sh                 Task runner (replaces Makefile)
 ./run.sh backtest         # Run walk-forward backtest
 ./run.sh backtest-summary # Print summary of a backtest JSON report
 ./run.sh backtest-compare # Compare two reports for byte-identical output
+./run.sh calibrate        # Bootstrap calibration from backtest
 ./run.sh csv-backfill     # Backfill CSV data
 ./run.sh fixtures-sync    # Sync upcoming fixtures
 ./run.sh seed             # Seed leagues, seasons, aliases

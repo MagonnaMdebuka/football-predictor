@@ -54,6 +54,7 @@ class BacktestConfig:
     league_code: str | None = None
     corners_xi: float | None = None
     cards_xi: float | None = None
+    halves_xi: float | None = None
     min_referee_matches: int = 20
 
 
@@ -237,6 +238,46 @@ class CountCalibrationSummary:
 
 
 @dataclass(frozen=True)
+class HalfTimePrediction:
+    """Per-match half-time prediction record."""
+
+    date: str
+    home_team: str
+    away_team: str
+    ht_home_goals: int
+    ht_away_goals: int
+    sh_home_goals: int
+    sh_away_goals: int
+    ht_result: str
+    ft_result: str
+    ht_model_home: float
+    ht_model_draw: float
+    ht_model_away: float
+    sh_model_home: float
+    sh_model_draw: float
+    sh_model_away: float
+    ht_lambda_home: float
+    ht_lambda_away: float
+    sh_lambda_home: float
+    sh_lambda_away: float
+    htft_probs: dict[str, float]
+
+
+@dataclass(frozen=True)
+class HalfTimeMetricSummary:
+    """Summary of half-time model evaluation metrics."""
+
+    ht_rps: float
+    sh_rps: float
+    htft_rps: float
+    ht_log_loss: float
+    sh_log_loss: float
+    n_predictions: int
+    ht_hit_rate: float
+    sh_hit_rate: float
+
+
+@dataclass(frozen=True)
 class BacktestReport:
     """Full backtest report with all results and metadata.
 
@@ -286,3 +327,7 @@ class BacktestReport:
     card_gate_passed: bool | None = None
     corner_gate_details: list[GateDetail] = field(default_factory=list)
     card_gate_details: list[GateDetail] = field(default_factory=list)
+    halftime_predictions: list[HalfTimePrediction] = field(default_factory=list)
+    halftime_metrics: HalfTimeMetricSummary | None = None
+    halftime_gate_passed: bool | None = None
+    halftime_gate_details: list[GateDetail] = field(default_factory=list)
