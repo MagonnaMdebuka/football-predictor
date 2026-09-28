@@ -1,7 +1,8 @@
 # Football Predictor — Claude Code Instructions
 
 ## Current Phase
-Phase 5 (Corners & Cards) — complete. Goals ship, corners and cards do not (ADR-020). 623 tests passing.
+Phase 6 (Predict, API, Web) — complete. Predict command, API endpoints, web pages (ADR-021). 641+ tests.
+Phase 5 (Corners & Cards) — complete. Goals ship, corners and cards do not (ADR-020).
 Phase 4 (Markets) — goals-derived markets complete.
 Phase 3 (Backtest) — walk-forward harness complete.
 Phase 2 (Engine) — Dixon-Coles model complete.
@@ -11,7 +12,7 @@ Phase 1 (Ingest) — complete.
 ```
 apps/web/              Next.js 15 frontend
 services/api/          FastAPI read API
-services/engine/       ingest/, models/, markets/, backtest/
+services/engine/       ingest/, models/, markets/, backtest/, predict/
 db/migrations/         Alembic (PostgreSQL 16)
 docker-compose.yml     5 services: db, redis, api, web, worker
 run.sh                 Task runner (replaces Makefile)
@@ -41,6 +42,7 @@ run.sh                 Task runner (replaces Makefile)
 ./run.sh test             # Run pytest
 ./run.sh test-models      # Run Dixon-Coles model tests only
 ./run.sh test-backtest    # Run backtest test suite only
+./run.sh predict          # Run predictions for a league
 ./run.sh backtest         # Run walk-forward backtest
 ./run.sh backtest-summary # Print summary of a backtest JSON report
 ./run.sh backtest-compare # Compare two reports for byte-identical output

@@ -20,6 +20,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Football Predictor API", version="0.1.0", lifespan=lifespan)
 
+from services.api.routers import fixtures, leagues, matches
+
+app.include_router(leagues.router)
+app.include_router(fixtures.router)
+app.include_router(matches.router)
+
 
 @app.get("/health")
 async def health():

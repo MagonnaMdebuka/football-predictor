@@ -189,3 +189,33 @@ Two flag tiers on `LeagueConfig` and the `leagues` DB table:
 - `ship_corners` / `ship_cards` — markets are published to the UI (False for E0). The API and frontend read these flags to determine which market families to display.
 
 Any future phase that adds market endpoints or UI components reads `ship_*` flags from the league config, not `has_*`. This ensures corners and cards remain suppressed until a future phase (Phase 9+) produces a model that passes the gate.
+
+## ADR-021: Phase 6 — Predict Command, API, and Web Pages
+**Date:** 25/09/2026
+**Status:** Accepted
+
+Phase 6 bridges the pure engine to production. Key decisions:
+
+### Immutable predictions
+Predictions are append-only. Re-running the predict command writes new rows; the API serves the prediction with the latest `created_at` per `match_id`. This avoids UPDATE contention and preserves an audit trail.
+
+### Idempotent predict runs
+A SHA-256 fingerprint of `(league_id, n_finished_matches, latest_match_date, model_version, git_commit)` stored on `model_runs` with a UNIQUE constraint. If the fingerprint already exists, the run is a no-op — no duplicate prediction sets. Including model version and git commit means code changes trigger fresh predictions even when training data hasn't changed. A `--force` flag bypasses the fingerprint check for manual re-runs.
+
+### Grid storage
+The 11x11 score grid is compressed via `zlib.compress(grid.astype(float64).tobytes())` and stored as `LargeBinary` on the `predictions` table. Raw = 968 bytes, compressed = ~300-400 bytes. This enables the API to serve the full grid and derive the modal scoreline without re-running the model.
+
+### Engine purity preserved
+The predict command orchestrates: queries DB → builds DataFrame → calls `fit_dixon_coles` / `build_grid` / `grid_to_markets` → writes results back. No DB calls inside engine code.
+
+### Confidence buckets
+Entropy-based classification of the 1X2 distribution into four buckets (very_high, high, medium, low). Thresholds tuned for realistic football distributions where entropy typically ranges 0.9-1.5.
+
+### Scoreline disagreement
+When the modal scoreline implies a different result from the 1X2 favourite, the API returns an explanatory note. This is expected behaviour (not an error) and is presented with neutral styling in the UI.
+
+### API design
+Three router groups: `/api/v1/leagues`, `/api/v1/fixtures`, `/api/v1/matches/{id}`. The match detail endpoint returns grouped markets for accordion display. Async SQLAlchemy sessions for the API tier; sync for the worker (predict command).
+
+### Web pages
+Next.js 15 server components with ISR (15 min for list pages, 60s for match detail). Dark mode default. The score grid uses a simple div-based heatmap rather than a charting library to minimise client JS.

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -178,11 +179,16 @@ class ModelRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    league_id: Mapped[int | None] = mapped_column(ForeignKey("leagues.id"), nullable=True)
+    fingerprint: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    n_training_matches: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    git_commit: Mapped[str | None] = mapped_column(String(40), nullable=True)
     parameters: Mapped[str | None] = mapped_column(Text)
     training_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     training_window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
+    league: Mapped["League | None"] = relationship()
     strengths: Mapped[list["TeamStrength"]] = relationship(back_populates="model_run")
     predictions: Mapped[list["Prediction"]] = relationship(back_populates="model_run")
 
@@ -211,6 +217,8 @@ class Prediction(Base):
     away_win_prob: Mapped[float] = mapped_column(Float, nullable=False)
     home_expected_goals: Mapped[float | None] = mapped_column(Float)
     away_expected_goals: Mapped[float | None] = mapped_column(Float)
+    grid_compressed: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    n_matches_train: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     model_run: Mapped["ModelRun"] = relationship(back_populates="predictions")

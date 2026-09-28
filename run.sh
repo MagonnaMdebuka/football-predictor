@@ -97,6 +97,11 @@ case "${1:-help}" in
         docker compose exec worker python -m pytest /app/tests/engine/backtest -v -m "not slow"
         ;;
 
+    predict)
+        echo "Running predictions..."
+        docker compose exec worker python -m services.engine.predict run "${@:2}"
+        ;;
+
     backtest)
         echo "Running walk-forward backtest..."
         docker compose exec worker python -m services.engine.backtest run "${@:2}"
@@ -165,6 +170,7 @@ case "${1:-help}" in
         echo "  health         Show health status of API and Web"
         echo "  verify         Gate check — PASS if both services return 200"
         echo "  lint           Run linters (ruff + next lint)"
+        echo "  predict        Run predictions for a league"
         echo "  test           Run test suites"
         echo "  test-models    Run Dixon-Coles model tests only"
         echo "  test-backtest  Run backtest test suite only"

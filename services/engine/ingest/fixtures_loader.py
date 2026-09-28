@@ -201,16 +201,20 @@ def sync_fixtures(
                 .one()
             )
 
+            raw_serialisable = {
+                k: (v.isoformat() if hasattr(v, "isoformat") else v)
+                for k, v in fixture.items()
+            }
             src_stmt = (
                 insert(MatchSourceRow)
                 .values(
                     match_id=match.id,
                     source="fd_org",
-                    raw=fixture,
+                    raw=raw_serialisable,
                 )
                 .on_conflict_do_update(
                     index_elements=["match_id", "source"],
-                    set_={"raw": fixture},
+                    set_={"raw": raw_serialisable},
                 )
             )
             session.execute(src_stmt)
