@@ -41,15 +41,16 @@ export default async function MatchPage({ params }: PageProps) {
       )}
 
       {!match.prediction && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 mb-6 text-center">
-          <p className="text-zinc-500">No prediction available for this match.</p>
-          <p className="text-zinc-600 text-sm mt-1">Run the predict command to generate predictions.</p>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 md:p-6 mb-6 text-center">
+          <p className="text-zinc-500 text-sm">No prediction available for this match.</p>
+          <p className="text-zinc-600 text-xs mt-1">Run the predict command to generate predictions.</p>
         </div>
       )}
 
+      {/* Markets + Score Grid — stacks on mobile, side-by-side on lg */}
       <div className="grid gap-6 lg:grid-cols-2 items-start mb-6">
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-200 mb-3">Markets</h2>
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-semibold text-zinc-200 mb-3">Markets</h2>
           <MarketAccordion markets={match.markets} />
         </div>
 

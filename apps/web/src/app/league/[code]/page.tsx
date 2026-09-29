@@ -24,11 +24,14 @@ export default async function LeaguePage({ params }: PageProps) {
     <div>
       <LeagueHeader league={data.league} />
 
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="grid gap-6 lg:gap-8 lg:grid-cols-[3fr_2fr]">
+        {/* Fixtures — left / top on mobile */}
         <div>
-          <h2 className="text-lg font-semibold text-zinc-200 mb-3">Upcoming Fixtures</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-zinc-200 mb-3">Upcoming Fixtures</h2>
           {data.fixtures.length === 0 ? (
-            <p className="text-zinc-500 text-sm">No upcoming fixtures.</p>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-center">
+              <p className="text-zinc-500 text-sm">No upcoming fixtures.</p>
+            </div>
           ) : (
             <div className="space-y-3">
               {data.fixtures.map((f) => (
@@ -38,9 +41,12 @@ export default async function LeaguePage({ params }: PageProps) {
           )}
         </div>
 
+        {/* Standings — right / below on mobile */}
         <div>
-          <h2 className="text-lg font-semibold text-zinc-200 mb-3">Standings</h2>
-          <StandingsTable standings={data.standings} />
+          <h2 className="text-lg sm:text-xl font-semibold text-zinc-200 mb-3">Standings</h2>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
+            <StandingsTable standings={data.standings} />
+          </div>
         </div>
       </div>
     </div>

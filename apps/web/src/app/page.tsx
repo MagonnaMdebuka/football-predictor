@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getFixtures, getLeagues, getNextFixtureDate } from "@/lib/api";
+import type { FixtureOut, LeagueOut } from "@/lib/types";
 import { FixtureCard } from "@/components/fixture-card";
 import { DateStrip } from "@/components/date-strip";
 import { LeagueChips } from "@/components/league-chips";
@@ -17,8 +18,8 @@ export default async function Home({ searchParams }: PageProps) {
   const today = new Date().toISOString().slice(0, 10);
 
   let date = explicitDate ?? today;
-  let fixtures;
-  let leagues;
+  let fixtures: FixtureOut[] = [];
+  let leagues: LeagueOut[] = [];
   let showingNextDate = false;
 
   try {
@@ -60,7 +61,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-1">{heading}</h1>
+      <h1 className="text-xl sm:text-2xl font-bold mb-1">{heading}</h1>
       {showingNextDate && (
         <p className="text-zinc-500 text-sm mb-4">
           No fixtures today — showing {date}
@@ -89,7 +90,7 @@ export default async function Home({ searchParams }: PageProps) {
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 auto-rows-fr">
           {fixtures.map((f) => (
             <FixtureCard key={f.id} fixture={f} />
           ))}

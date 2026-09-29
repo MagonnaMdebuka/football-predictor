@@ -59,12 +59,12 @@ export default async function MarketAccuracyPage({ params }: PageProps) {
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-zinc-100">{label}</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-zinc-100">{label}</h1>
         <QualityBadge badge={data.badge.badge} showLabel />
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6 md:mb-8">
         {data.brier !== null && (
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
             <p className="text-xs text-zinc-500 uppercase tracking-wider">Brier Score</p>

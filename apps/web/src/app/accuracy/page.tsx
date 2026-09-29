@@ -74,8 +74,8 @@ export default async function AccuracyPage() {
   return (
     <div>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-zinc-100">Model Accuracy</h1>
+      <div className="mb-6 md:mb-8">
+        <h1 className="text-xl sm:text-2xl font-bold text-zinc-100">Model Accuracy</h1>
         <p className="text-sm text-zinc-500 mt-1">
           {hasData
             ? sourceLabel(overview.source, overview.total_settled)
@@ -94,7 +94,7 @@ export default async function AccuracyPage() {
       {hasData && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6 md:mb-8">
             {avgBrier !== null && (
               <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider">Avg Brier</p>

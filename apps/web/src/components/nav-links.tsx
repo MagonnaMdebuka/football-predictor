@@ -54,14 +54,14 @@ export function NavLinks() {
 
       {/* Mobile dropdown */}
       {menuOpen && (
-        <div className="md:hidden absolute top-14 left-0 right-0 bg-zinc-950 border-b border-zinc-800 px-4 py-3 flex flex-col gap-3 z-50">
+        <div className="md:hidden absolute top-14 left-0 right-0 bg-zinc-950 border-b border-zinc-800 px-4 md:px-6 py-3 flex flex-col gap-3 z-50 overflow-x-hidden">
           {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
               onClick={() => setMenuOpen(false)}
-              className={`text-sm hover:text-zinc-200 ${
-                isActive(l.href) ? "text-zinc-100" : "text-zinc-400"
+              className={`text-sm py-1 hover:text-zinc-200 ${
+                isActive(l.href) ? "text-zinc-100 font-medium" : "text-zinc-400"
               }`}
             >
               {l.label}

@@ -9,8 +9,8 @@ interface LeagueHeaderProps {
 export function LeagueHeader({ league }: LeagueHeaderProps) {
   return (
     <div className="mb-6">
-      <h1 className="text-2xl font-bold text-zinc-100">{league.name}</h1>
-      <p className="text-sm text-zinc-500">{league.country}</p>
+      <h1 className="text-xl sm:text-2xl font-bold text-zinc-100">{league.name}</h1>
+      <p className="text-xs sm:text-sm text-zinc-500">{league.country}</p>
     </div>
   );
 }

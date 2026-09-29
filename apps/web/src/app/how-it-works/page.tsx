@@ -4,8 +4,8 @@ export default function HowItWorksPage() {
   return (
     <div>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-zinc-100">How It Works</h1>
+      <div className="mb-6 md:mb-8">
+        <h1 className="text-xl sm:text-2xl font-bold text-zinc-100">How It Works</h1>
         <p className="text-sm text-zinc-500 mt-1">
           A plain-English guide to the model, its data, and its limits
         </p>

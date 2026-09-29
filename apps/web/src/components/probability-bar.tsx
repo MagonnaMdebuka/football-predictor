@@ -14,7 +14,7 @@ export function ProbabilityBar({ home, draw, away, size = "sm" }: ProbabilityBar
   const height = size === "lg" ? "h-8" : "h-5";
 
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0">
       <div className={`flex ${height} rounded-md overflow-hidden text-xs font-medium`}>
         <div
           className="bg-emerald-600 flex items-center justify-center text-white"
