@@ -29,6 +29,9 @@ export default function RootLayout({
             <Link href="/accuracy" className="text-sm text-zinc-400 hover:text-zinc-200">
               Accuracy
             </Link>
+            <Link href="/how-it-works" className="text-sm text-zinc-400 hover:text-zinc-200">
+              How It Works
+            </Link>
           </div>
         </nav>
 

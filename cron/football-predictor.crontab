@@ -1,0 +1,50 @@
+# Football Predictor — production cron schedule
+# All times are UTC. Install on the VPS host (not inside a container):
+#
+#   sudo cp cron/football-predictor.crontab /etc/cron.d/football-predictor
+#   sudo chmod 644 /etc/cron.d/football-predictor
+#
+# Logs are written to /var/log/football-predictor/<job>.log
+# The run-job.sh wrapper records exit status, checks for two consecutive
+# failures, and fires the ALERT_WEBHOOK_URL if configured.
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PROJECT_DIR=/opt/football-predictor
+COMPOSE_FILE=/opt/football-predictor/docker-compose.prod.yml
+
+# ┌─────── minute
+# │  ┌──── hour (UTC)
+# │  │  ┌─ day of month
+# │  │  │ ┌ month
+# │  │  │ │ ┌ day of week (0=Sun)
+# │  │  │ │ │
+# │  │  │ │ │  user    command
+
+# 1. CSV backfill — weekly Sunday 02:00 UTC
+#    Pulls latest season CSVs from football-data.co.uk
+0  2  *  *  0  root  $PROJECT_DIR/cron/run-job.sh csv_backfill "python -m services.engine.ingest csv-backfill"
+
+# 2. Fixtures sync — daily 03:00 UTC
+#    Syncs upcoming fixtures from football-data.org API
+0  3  *  *  *  root  $PROJECT_DIR/cron/run-job.sh fixtures_sync "python -m services.engine.ingest fixtures-sync"
+
+# 3. Results sync — hourly 17:00–23:00 UTC every day
+#    Pulls completed match results; cheap no-op when no matches have finished
+0  17-23  *  *  *  root  $PROJECT_DIR/cron/run-job.sh results_sync "python -m services.engine.ingest results-sync"
+
+# 4. Fit models — nightly 04:00 UTC
+#    Re-fits Dixon-Coles parameters from latest data for all active leagues
+0  4  *  *  *  root  $PROJECT_DIR/cron/run-job.sh fit_models "python -m services.engine.models fit --all-active"
+
+# 5. Predict — daily 05:00 UTC
+#    Generates predictions for upcoming fixtures across all active leagues
+0  5  *  *  *  root  $PROJECT_DIR/cron/run-job.sh predict "python -m services.engine.predict run --all-active"
+
+# 6. Calibrate — weekly Sunday 06:00 UTC
+#    Re-calibrates probability maps from latest backtest for all active leagues
+0  6  *  *  0  root  $PROJECT_DIR/cron/run-job.sh calibrate "python -m services.engine.calibration bootstrap --all-active"
+
+# 7. Score accuracy — daily 07:00 UTC
+#    Updates accuracy metrics from settled predictions for all active leagues
+0  7  *  *  *  root  $PROJECT_DIR/cron/run-job.sh score_accuracy "python -m services.engine.calibration score-accuracy --all-active"

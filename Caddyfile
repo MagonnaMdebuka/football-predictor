@@ -1,0 +1,40 @@
+# Caddyfile — automatic HTTPS via Let's Encrypt
+# Replace {$DOMAIN} with the actual domain, or set DOMAIN in .env
+# and launch caddy with: caddy run --environ
+
+{$DOMAIN:localhost} {
+	# Frontend — Next.js
+	handle {
+		reverse_proxy web:3000
+	}
+
+	# API — FastAPI
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Health endpoint bypasses the frontend
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	# Security headers
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Gzip compression
+	encode gzip
+
+	# Access log
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
