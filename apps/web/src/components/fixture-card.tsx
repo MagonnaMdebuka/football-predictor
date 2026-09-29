@@ -11,7 +11,11 @@ interface FixtureCardProps {
 
 function formatKickoff(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return d.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }) + ", " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export function FixtureCard({ fixture }: FixtureCardProps) {
@@ -22,18 +26,27 @@ export function FixtureCard({ fixture }: FixtureCardProps) {
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-600 transition-colors">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-zinc-500 uppercase tracking-wide">
-            {fixture.league_code}
+            {fixture.league_name ?? fixture.league_code}
           </span>
           <span className="text-xs text-zinc-500">{formatKickoff(fixture.kickoff_utc)}</span>
         </div>
 
         <div className="flex items-center justify-between mb-3">
           <span className="font-medium text-zinc-100">{fixture.home_team}</span>
-          <span className="text-zinc-500 text-sm">vs</span>
+          {fixture.status === "finished" && fixture.ft_home_goals != null && fixture.ft_away_goals != null ? (
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-zinc-100">
+                {fixture.ft_home_goals} - {fixture.ft_away_goals}
+              </span>
+              <span className="text-xs bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded">FT</span>
+            </div>
+          ) : (
+            <span className="text-zinc-500 text-sm">vs</span>
+          )}
           <span className="font-medium text-zinc-100">{fixture.away_team}</span>
         </div>
 
-        {pred && (
+        {fixture.status !== "finished" && pred && (
           <>
             <ProbabilityBar home={pred.home_win_prob} draw={pred.draw_prob} away={pred.away_win_prob} />
             <div className="flex items-center justify-between mt-2">
@@ -54,7 +67,7 @@ export function FixtureCard({ fixture }: FixtureCardProps) {
           </>
         )}
 
-        {!pred && (
+        {fixture.status !== "finished" && !pred && (
           <p className="text-xs text-zinc-600 mt-1">No prediction available</p>
         )}
       </div>

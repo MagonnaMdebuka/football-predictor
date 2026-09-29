@@ -28,10 +28,10 @@ export default async function Home({ searchParams }: PageProps) {
     ]);
 
     // When no explicit date was set and today has no fixtures,
-    // fall forward to the next date that does.
+    // fall forward to the next future date that does.
     if (!explicitDate && fixtures.length === 0) {
       const nextDate = await getNextFixtureDate();
-      if (nextDate && nextDate !== date) {
+      if (nextDate && nextDate !== date && nextDate >= today) {
         fixtures = await getFixtures(nextDate, league);
         date = nextDate;
         showingNextDate = true;
@@ -42,10 +42,20 @@ export default async function Home({ searchParams }: PageProps) {
     leagues = [];
   }
 
+  function formatDateHeading(iso: string): string {
+    const d = new Date(iso + "T12:00:00");
+    return d.toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
   const heading = showingNextDate
-    ? "Next Fixtures"
+    ? `Next Fixtures — ${formatDateHeading(date)}`
     : explicitDate
-      ? `Fixtures — ${date}`
+      ? `Fixtures — ${formatDateHeading(date)}`
       : "Today\u2019s Fixtures";
 
   return (
@@ -71,9 +81,11 @@ export default async function Home({ searchParams }: PageProps) {
 
       {fixtures.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-zinc-500 text-lg">No upcoming fixtures.</p>
+          <p className="text-zinc-500 text-lg">
+            No fixtures scheduled for today.
+          </p>
           <p className="text-zinc-600 text-sm mt-2">
-            Run predictions to generate forecasts for scheduled matches.
+            Browse a different date or check the league page.
           </p>
         </div>
       ) : (

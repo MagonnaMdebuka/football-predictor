@@ -37,6 +37,9 @@ class FixtureOut(BaseModel):
     kickoff_utc: datetime
     status: str
     league_code: str | None = None
+    league_name: str | None = None
+    ft_home_goals: int | None = None
+    ft_away_goals: int | None = None
     prediction: PredictionSummary | None = None
 
 
@@ -62,6 +65,8 @@ class MatchDetailOut(BaseModel):
     away_team: str
     kickoff_utc: datetime
     status: str
+    ft_home_goals: int | None = None
+    ft_away_goals: int | None = None
     referee: RefereeStatsOut | None = None
     prediction: PredictionSummary | None = None
     markets: dict[str, list[MarketOut]] = {}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { NavLinks } from "@/components/nav-links";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,23 +16,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col">
-        <nav className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-50">
+        <nav className="relative border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-50">
           <div className="max-w-5xl mx-auto px-4 h-14 flex items-center gap-6">
             <Link href="/" className="text-lg font-bold text-zinc-100 hover:text-white">
               Football Predictor
             </Link>
-            <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-200">
-              Home
-            </Link>
-            <Link href="/league/E0" className="text-sm text-zinc-400 hover:text-zinc-200">
-              Leagues
-            </Link>
-            <Link href="/accuracy" className="text-sm text-zinc-400 hover:text-zinc-200">
-              Accuracy
-            </Link>
-            <Link href="/how-it-works" className="text-sm text-zinc-400 hover:text-zinc-200">
-              How It Works
-            </Link>
+            <NavLinks />
           </div>
         </nav>
 

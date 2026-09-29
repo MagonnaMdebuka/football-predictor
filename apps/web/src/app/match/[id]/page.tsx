@@ -32,6 +32,8 @@ export default async function MatchPage({ params }: PageProps) {
         kickoff={match.kickoff_utc}
         status={match.status}
         referee={match.referee}
+        ftHomeGoals={match.ft_home_goals}
+        ftAwayGoals={match.ft_away_goals}
       />
 
       {match.prediction && (
@@ -45,13 +47,13 @@ export default async function MatchPage({ params }: PageProps) {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2 mb-6">
+      <div className="grid gap-6 lg:grid-cols-2 items-start mb-6">
         <div>
           <h2 className="text-lg font-semibold text-zinc-200 mb-3">Markets</h2>
           <MarketAccordion markets={match.markets} />
         </div>
 
-        <div>
+        <div className="lg:sticky lg:top-20">
           {match.grid && <ScoreGrid grid={match.grid} />}
         </div>
       </div>

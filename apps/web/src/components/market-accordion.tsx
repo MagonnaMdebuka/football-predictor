@@ -10,7 +10,41 @@ const GROUP_LABELS: Record<string, string> = {
   handicaps: "Handicaps",
   score: "Score",
   defence: "Defence",
+  ht_goals: "Half-Time Goals",
+  ht_result: "Half-Time Result",
+  ht_score: "Half-Time Score",
+  halftime: "Half-Time",
 };
+
+function formatSelection(market: string, selection: string): string {
+  // Correct score: digit_digit → "digit-digit"
+  if (/^\d+_\d+$/.test(selection)) {
+    return selection.replace("_", "-");
+  }
+
+  // Double chance / draw-no-bet labels
+  const dcMap: Record<string, string> = {
+    home_draw: "Home or Draw",
+    draw_away: "Draw or Away",
+    home_away: "Home or Away",
+  };
+  if (dcMap[selection]) return dcMap[selection];
+
+  // Winning margin: "home_1" → "Home by 1", "home_+3" → "Home by 3+"
+  const marginMatch = selection.match(/^(home|away|draw)_(\+?\d+)$/);
+  if (marginMatch) {
+    if (marginMatch[1] === "draw") return "Draw";
+    const side = marginMatch[1].charAt(0).toUpperCase() + marginMatch[1].slice(1);
+    const num = marginMatch[2].replace("+", "");
+    const suffix = marginMatch[2].includes("+") ? "+" : "";
+    return `${side} by ${num}${suffix}`;
+  }
+
+  // Generic fallback: replace underscores with spaces, title-case
+  return selection
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 interface MarketAccordionProps {
   markets: Record<string, MarketOut[]>;
@@ -18,10 +52,11 @@ interface MarketAccordionProps {
 
 function MarketRow({ m }: { m: MarketOut }) {
   const pct = Math.round(m.probability * 100);
+  if (pct === 0) return null;
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/50 last:border-0">
       <div className="flex items-center gap-2">
-        <span className="text-sm text-zinc-300">{m.selection}</span>
+        <span className="text-sm text-zinc-300">{formatSelection(m.market, m.selection)}</span>
         {m.line != null && (
           <span className="text-xs text-zinc-500">({m.line})</span>
         )}

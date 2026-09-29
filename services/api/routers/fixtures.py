@@ -21,9 +21,11 @@ async def next_fixture_date(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str | None]:
     """Return the earliest date that has a scheduled fixture, or null."""
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     result = await db.execute(
         select(func.min(Match.kickoff_utc))
         .where(Match.status == "scheduled")
+        .where(Match.kickoff_utc >= today)
     )
     earliest = result.scalar_one_or_none()
     if earliest is None:
@@ -68,9 +70,10 @@ async def list_fixtures(
         home = await db.get(Team, m.home_team_id)
         away = await db.get(Team, m.away_team_id)
 
-        # Get league code
+        # Get league info
         lg = await db.get(League, m.league_id)
         league_code = lg.fd_couk_code if lg else None
+        league_name = lg.name if lg else None
 
         pred_summary = await _latest_prediction_summary(db, m.id)
 
@@ -81,6 +84,9 @@ async def list_fixtures(
             kickoff_utc=m.kickoff_utc,
             status=m.status,
             league_code=league_code,
+            league_name=league_name,
+            ft_home_goals=m.ft_home_goals,
+            ft_away_goals=m.ft_away_goals,
             prediction=pred_summary,
         ))
 

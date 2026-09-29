@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -85,6 +83,9 @@ async def get_league(code: str, db: AsyncSession = Depends(get_db)):
             kickoff_utc=m.kickoff_utc,
             status=m.status,
             league_code=code,
+            league_name=league.name,
+            ft_home_goals=m.ft_home_goals,
+            ft_away_goals=m.ft_away_goals,
             prediction=pred_summary,
         ))
 
@@ -200,19 +201,25 @@ async def _compute_standings(
     if season is None:
         return []
 
-    matches_result = await db.execute(
+    # Collect all team IDs from every match in the season (scheduled + finished)
+    all_matches_result = await db.execute(
         select(Match)
         .where(Match.league_id == league_id)
         .where(Match.season_id == season.id)
-        .where(Match.status == "finished")
-        .where(Match.ft_home_goals.isnot(None))
     )
-    matches = matches_result.scalars().all()
+    all_matches = all_matches_result.scalars().all()
 
-    stats: dict[int, dict] = defaultdict(
-        lambda: {"p": 0, "w": 0, "d": 0, "l": 0, "gf": 0, "ga": 0}
-    )
-    for m in matches:
+    # Initialise stats for every team seen in any match
+    stats: dict[int, dict] = {}
+    for m in all_matches:
+        for tid in (m.home_team_id, m.away_team_id):
+            if tid not in stats:
+                stats[tid] = {"p": 0, "w": 0, "d": 0, "l": 0, "gf": 0, "ga": 0}
+
+    # Update stats from finished matches only
+    for m in all_matches:
+        if m.status != "finished" or m.ft_home_goals is None:
+            continue
         hg, ag = m.ft_home_goals, m.ft_away_goals
         stats[m.home_team_id]["p"] += 1
         stats[m.home_team_id]["gf"] += hg

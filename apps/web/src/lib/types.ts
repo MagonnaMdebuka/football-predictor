@@ -28,6 +28,9 @@ export interface FixtureOut {
   kickoff_utc: string;
   status: string;
   league_code: string | null;
+  league_name: string | null;
+  ft_home_goals: number | null;
+  ft_away_goals: number | null;
   prediction: PredictionSummary | null;
 }
 
@@ -53,6 +56,8 @@ export interface MatchDetailOut {
   away_team: string;
   kickoff_utc: string;
   status: string;
+  ft_home_goals: number | null;
+  ft_away_goals: number | null;
   referee: RefereeStatsOut | null;
   prediction: PredictionSummary | null;
   markets: Record<string, MarketOut[]>;
