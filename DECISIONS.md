@@ -354,3 +354,21 @@ The full-time Dixon-Coles model produces an 11×11 score grid from which 15 goal
 ### Test count
 
 25 new tests (3 grid, 13 markets, 8 harness, 4 gate) — total engine suite: 672 tests passing.
+
+### Backtest results (E0, held-out 2024-25 + 2025-26, n=760)
+
+| Metric | Model | Baseline | Delta |
+|--------|-------|----------|-------|
+| HT 1X2 RPS | 0.2011 | 0.2126 (base-rate) | -5.39% |
+| HT 1X2 log loss | 1.0722 | 1.0842 (base-rate) | -1.10% |
+| 2H 1X2 RPS | 0.2160 | 0.2196 (base-rate) | -1.63% |
+| HT/FT log loss | 2.0784 | 2.1972 (uniform 1/9) | -0.1188 |
+| HT/FT RPS | 0.1907 | 0.2136 (uniform) | -10.7% |
+
+Gate: **PASS** (all 6 checks). First-half goal share: 0.449 (observed), 0.446 (fitted lambdas).
+
+### Known biases
+
+1. **HT/FT conditional independence** — the model assumes the second half is independent of the first half. This under-predicts DD by ~1.2pp (predicted 13.0% vs observed 14.2%) and under-predicts reversal cells HA and AH by ~1.3pp combined (predicted 4.6% vs observed 6.9%). The fix is a state-dependent second-half model (e.g. conditioning 2H lambdas on HT score), deferred until ROI justifies the complexity.
+
+2. **HT 0-0 gap** — model predicts P(0-0 at HT) = 23.6% vs observed 26.1%. This is the same mean-goals bias from Phase 4 (Poisson slightly over-predicts total goals), now split across halves. The exponential first-goal-timing model inherits this bias directly.

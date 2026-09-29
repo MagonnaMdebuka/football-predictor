@@ -76,3 +76,77 @@ export interface LeagueDetailOut {
   fixtures: FixtureOut[];
   standings: StandingsRowOut[];
 }
+
+// --- Accuracy / Calibration types ---
+
+export interface CalibrationBinOut {
+  bin_lower: number;
+  bin_upper: number;
+  predicted_frequency: number;
+  observed_frequency: number;
+  sample_size: number;
+}
+
+export interface ReliabilityDiagramOut {
+  bins: CalibrationBinOut[];
+  calibration_error: number;
+  mean_calibration_error: number;
+}
+
+export interface QualityBadgeOut {
+  market: string;
+  badge: string;
+  n_seasons: number;
+  has_direct_data: boolean;
+}
+
+export interface GateStatusOut {
+  name: string;
+  passed: boolean;
+  message: string;
+}
+
+export interface MarketAccuracyOut {
+  market: string;
+  brier: number | null;
+  rps: number | null;
+  log_loss: number | null;
+  hit_rate: number | null;
+  sample_size: number;
+  badge: QualityBadgeOut;
+  gates: GateStatusOut[];
+  source: string;
+}
+
+export interface AccuracyOverviewOut {
+  markets: MarketAccuracyOut[];
+  total_settled: number;
+  source: string;
+}
+
+export interface MarketAccuracyDetailOut {
+  market: string;
+  reliability: ReliabilityDiagramOut;
+  calibration_bins: CalibrationBinOut[];
+  brier: number | null;
+  rps: number | null;
+  log_loss: number | null;
+  hit_rate: number | null;
+  sample_size: number;
+  badge: QualityBadgeOut;
+  gates: GateStatusOut[];
+  source: string;
+}
+
+export interface ModelVsMarketItemOut {
+  market: string;
+  model_metric: number;
+  bookmaker_metric: number;
+  metric_name: string;
+  sample_size: number;
+}
+
+export interface ModelVsMarketOut {
+  comparisons: ModelVsMarketItemOut[];
+  source: string;
+}

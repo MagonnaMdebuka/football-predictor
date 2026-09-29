@@ -26,6 +26,9 @@ export default function RootLayout({
             <Link href="/league/E0" className="text-sm text-zinc-400 hover:text-zinc-200">
               Leagues
             </Link>
+            <Link href="/accuracy" className="text-sm text-zinc-400 hover:text-zinc-200">
+              Accuracy
+            </Link>
           </div>
         </nav>
 

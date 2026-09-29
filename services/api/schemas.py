@@ -84,3 +84,78 @@ class LeagueDetailOut(BaseModel):
     league: LeagueOut
     fixtures: list[FixtureOut]
     standings: list[StandingsRowOut]
+
+
+# --- Accuracy / Calibration schemas ---
+
+
+class CalibrationBinOut(BaseModel):
+    bin_lower: float
+    bin_upper: float
+    predicted_frequency: float
+    observed_frequency: float
+    sample_size: int
+
+
+class ReliabilityDiagramOut(BaseModel):
+    bins: list[CalibrationBinOut]
+    calibration_error: float
+    mean_calibration_error: float
+
+
+class QualityBadgeOut(BaseModel):
+    market: str
+    badge: str
+    n_seasons: int
+    has_direct_data: bool
+
+
+class GateStatusOut(BaseModel):
+    name: str
+    passed: bool
+    message: str
+
+
+class MarketAccuracyOut(BaseModel):
+    market: str
+    brier: float | None = None
+    rps: float | None = None
+    log_loss: float | None = None
+    hit_rate: float | None = None
+    sample_size: int
+    badge: QualityBadgeOut
+    gates: list[GateStatusOut]
+    source: str
+
+
+class AccuracyOverviewOut(BaseModel):
+    markets: list[MarketAccuracyOut]
+    total_settled: int
+    source: str
+
+
+class MarketAccuracyDetailOut(BaseModel):
+    market: str
+    reliability: ReliabilityDiagramOut
+    calibration_bins: list[CalibrationBinOut]
+    brier: float | None = None
+    rps: float | None = None
+    log_loss: float | None = None
+    hit_rate: float | None = None
+    sample_size: int
+    badge: QualityBadgeOut
+    gates: list[GateStatusOut]
+    source: str
+
+
+class ModelVsMarketItemOut(BaseModel):
+    market: str
+    model_metric: float
+    bookmaker_metric: float
+    metric_name: str
+    sample_size: int
+
+
+class ModelVsMarketOut(BaseModel):
+    comparisons: list[ModelVsMarketItemOut]
+    source: str

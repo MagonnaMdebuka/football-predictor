@@ -1,10 +1,13 @@
 /** Typed fetch wrapper for the Football Predictor API. */
 
 import type {
+  AccuracyOverviewOut,
   FixtureOut,
   LeagueDetailOut,
   LeagueOut,
+  MarketAccuracyDetailOut,
   MatchDetailOut,
+  ModelVsMarketOut,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://api:8000";
@@ -43,4 +46,16 @@ export async function getMatch(id: number): Promise<MatchDetailOut> {
 export async function getNextFixtureDate(): Promise<string | null> {
   const data = await fetchApi<{ date: string | null }>("/api/v1/fixtures/next-date");
   return data.date;
+}
+
+export async function getAccuracyOverview(): Promise<AccuracyOverviewOut> {
+  return fetchApi<AccuracyOverviewOut>("/api/v1/accuracy");
+}
+
+export async function getMarketAccuracy(market: string): Promise<MarketAccuracyDetailOut> {
+  return fetchApi<MarketAccuracyDetailOut>(`/api/v1/accuracy/${market}`);
+}
+
+export async function getModelVsMarket(): Promise<ModelVsMarketOut> {
+  return fetchApi<ModelVsMarketOut>("/api/v1/accuracy/model-vs-market");
 }

@@ -117,6 +117,11 @@ case "${1:-help}" in
         docker compose exec worker python -m services.engine.backtest compare "${@:2}"
         ;;
 
+    calibrate)
+        echo "Running calibration..."
+        docker compose exec worker python -m services.engine.calibration bootstrap "${@:2}"
+        ;;
+
     seed)
         echo "Seeding leagues, seasons, and team aliases..."
         docker compose exec worker python -m services.engine.ingest seed
@@ -177,6 +182,7 @@ case "${1:-help}" in
         echo "  backtest       Run walk-forward backtest"
         echo "  backtest-summary  Print summary of a backtest JSON report"
         echo "  backtest-compare  Compare two reports for byte-identical output"
+        echo "  calibrate      Bootstrap calibration from backtest"
         echo "  seed           Seed leagues, seasons, and team aliases"
         echo "  csv-backfill   Backfill season CSVs from football-data.co.uk"
         echo "  fixtures-sync  Sync upcoming fixtures from football-data.org"

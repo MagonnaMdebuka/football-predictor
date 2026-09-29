@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for the Football Predictor database.
 
-15 tables covering leagues, teams, matches, predictions, and calibration,
-plus match_source_rows for raw ingest data.
+16 tables covering leagues, teams, matches, predictions, calibration,
+model-vs-market comparison, plus match_source_rows for raw ingest data.
 """
 
 from datetime import datetime, timezone
@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -244,13 +245,29 @@ class CalibrationMap(Base):
     __tablename__ = "calibration_maps"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    model_run_id: Mapped[int] = mapped_column(ForeignKey("model_runs.id"), nullable=False)
+    model_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_runs.id"), nullable=True
+    )
     market: Mapped[str] = mapped_column(String(50), nullable=False)
+    selection: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     bin_lower: Mapped[float] = mapped_column(Float, nullable=False)
     bin_upper: Mapped[float] = mapped_column(Float, nullable=False)
     predicted_frequency: Mapped[float] = mapped_column(Float, nullable=False)
     observed_frequency: Mapped[float] = mapped_column(Float, nullable=False)
     sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="backtest")
+    league_id: Mapped[int | None] = mapped_column(
+        ForeignKey("leagues.id"), nullable=True
+    )
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_calibration_current", "market", "selection", "is_current"),
+    )
 
 
 class Outcome(Base):
@@ -268,11 +285,46 @@ class AccuracyMetric(Base):
     __tablename__ = "accuracy_metrics"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    model_run_id: Mapped[int] = mapped_column(ForeignKey("model_runs.id"), nullable=False)
+    model_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_runs.id"), nullable=True
+    )
     metric_name: Mapped[str] = mapped_column(String(50), nullable=False)
     metric_value: Mapped[float] = mapped_column(Float, nullable=False)
     sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
-    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="backtest")
+    league_id: Mapped[int | None] = mapped_column(
+        ForeignKey("leagues.id"), nullable=True
+    )
+    market: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_accuracy_metrics_source", "source", "league_id", "market"),
+    )
+
+
+class ModelVsMarket(Base):
+    __tablename__ = "model_vs_market"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prediction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("predictions.id"), nullable=True
+    )
+    market: Mapped[str] = mapped_column(String(50), nullable=False)
+    selection: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_prob: Mapped[float] = mapped_column(Float, nullable=False)
+    bookmaker_prob: Mapped[float] = mapped_column(Float, nullable=False)
+    bookmaker_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="backtest")
+    league_id: Mapped[int | None] = mapped_column(
+        ForeignKey("leagues.id"), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_model_vs_market_prediction", "prediction_id"),
+    )
 
 
 class IngestRun(Base):

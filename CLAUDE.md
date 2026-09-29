@@ -1,13 +1,19 @@
 # Football Predictor — Claude Code Instructions
 
+## Never re-run a completed backtest
+If a diagnostic script crashes after the backtest finishes, extract the data
+that already printed and compute the remaining sections from it. A script
+that calls run_backtest() is never the fix for a missing print statement.
+
 ## Current Phase
-Phase 8 (Half-Time Grids, HT/FT Market, First Goal Timing) — complete. Separate HT/2H Dixon-Coles fits, 7×7 grids, 9-outcome HT/FT market, first goal timing (ADR-024). 672+ tests.
-Phase 7 (Calibration, Accuracy, Quality Badges) — complete. Calibration maps, accuracy page, model-vs-market (ADR-022).
-Phase 6 (Predict, API, Web) — complete. Predict command, API endpoints, web pages (ADR-021).
-Phase 5 (Corners & Cards) — complete. Goals ship, corners and cards do not (ADR-020).
-Phase 4 (Markets) — goals-derived markets complete.
-Phase 3 (Backtest) — walk-forward harness complete.
-Phase 2 (Engine) — Dixon-Coles model complete.
+Phase 9 (Multi-League Backfill, Cron, Deploy, Monitoring) — planning.
+Phase 8 (Half-Time Grids, HT/FT Market, First Goal Timing) — complete (ADR-024). 672+ tests.
+Phase 7 (Calibration, Accuracy, Quality Badges) — complete (ADR-022).
+Phase 6 (Predict, API, Web) — complete (ADR-021).
+Phase 5 (Corners & Cards) — complete (ADR-020).
+Phase 4 (Markets) — complete.
+Phase 3 (Backtest) — complete.
+Phase 2 (Engine) — complete.
 Phase 1 (Ingest) — complete.
 
 ## Project Layout
