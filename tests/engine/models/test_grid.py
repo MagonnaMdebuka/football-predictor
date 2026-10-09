@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from services.engine.models.grid import MAX_GOALS, build_grid
+from services.engine.models.grid import LAMBDA_WIDE_THRESHOLD, MAX_GOALS, MAX_GOALS_WIDE, build_grid
 from services.engine.models.params import DixonColesParams
 from services.engine.models.poisson import goal_expectancy, poisson_pmf
 
@@ -135,3 +135,37 @@ class TestMaxGoalsParameter:
         assert sg.predict_scoreline(6, 0) > 0.0
         assert sg.predict_scoreline(7, 0) == 0.0
         assert sg.predict_scoreline(0, 7) == 0.0
+
+
+class TestAutoWidening:
+    """build_grid auto-widens to 16x16 when lambda exceeds threshold."""
+
+    @pytest.fixture
+    def high_lambda_params(self) -> DixonColesParams:
+        """Params that produce lambda > 3.0 for Arsenal at home."""
+        return DixonColesParams(
+            teams=TEAMS,
+            mu=0.25,
+            attack=np.array([0.8, -0.6, 0.2, -0.4]),
+            defence=np.array([-0.2, 0.5, 0.0, 0.1]),
+            gamma=0.3,
+            rho=-0.05,
+        )
+
+    def test_normal_lambda_stays_11x11(self, sample_params: DixonColesParams):
+        sg = build_grid(sample_params, "Arsenal", "Chelsea")
+        assert sg.grid.shape == (MAX_GOALS, MAX_GOALS)
+
+    def test_high_lambda_widens_to_16x16(self, high_lambda_params: DixonColesParams):
+        sg = build_grid(high_lambda_params, "Arsenal", "Spurs")
+        assert sg.lambda_home > LAMBDA_WIDE_THRESHOLD
+        assert sg.grid.shape == (MAX_GOALS_WIDE, MAX_GOALS_WIDE)
+
+    def test_widened_grid_sums_to_one(self, high_lambda_params: DixonColesParams):
+        sg = build_grid(high_lambda_params, "Arsenal", "Spurs")
+        assert sg.grid.sum() == pytest.approx(1.0, abs=1e-4)
+
+    def test_explicit_max_goals_not_overridden(self, high_lambda_params: DixonColesParams):
+        """Explicit max_goals=7 (e.g. HT grids) should not auto-widen."""
+        sg = build_grid(high_lambda_params, "Arsenal", "Spurs", max_goals=7)
+        assert sg.grid.shape == (7, 7)

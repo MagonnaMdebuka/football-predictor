@@ -11,6 +11,8 @@ from services.engine.models.poisson import goal_expectancy, poisson_pmf
 from services.engine.models.tau import tau
 
 MAX_GOALS = 11
+MAX_GOALS_WIDE = 16
+LAMBDA_WIDE_THRESHOLD = 3.0
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,12 @@ def build_grid(
     )
     lam_h_scalar = float(lam_h[0])
     lam_a_scalar = float(lam_a[0])
+
+    # Auto-widen grid for high-lambda fixtures to avoid tail mass truncation
+    if max_goals == MAX_GOALS and (
+        lam_h_scalar > LAMBDA_WIDE_THRESHOLD or lam_a_scalar > LAMBDA_WIDE_THRESHOLD
+    ):
+        max_goals = MAX_GOALS_WIDE
 
     grid = np.zeros((max_goals, max_goals), dtype=np.float64)
 

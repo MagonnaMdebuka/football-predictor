@@ -1,7 +1,9 @@
 """Goals-derived markets from a ScoreGrid probability matrix.
 
-All 15 market types are derived from the 11x11 score grid. Each market is
-computed by a private helper; the public entry point is ``grid_to_markets``.
+All 15 market types are derived from the score grid. The grid is normally
+11x11 but auto-widens to 16x16 for high-lambda fixtures (lambda > 3.0).
+Each market is computed by a private helper; the public entry point is
+``grid_to_markets``.
 """
 
 from __future__ import annotations
@@ -11,8 +13,8 @@ import numpy as np
 from services.engine.models.grid import ScoreGrid
 
 # Maximum tail mass allowed beyond the grid boundary (guards high-lambda grids).
-# With MAX_GOALS=11, Poisson(3.5) loses ~0.03% per side; 1e-3 accommodates
-# lambdas up to ~4 per side while catching truly extreme expectancies.
+# With auto-widening to 16x16 for lambda > 3.0, Poisson(3.5) loses < 1e-6.
+# This threshold is a safety net for extreme cases.
 _MAX_TAIL_MASS = 1e-3
 
 # Lines for over/under and team totals
@@ -38,9 +40,9 @@ class GridTruncationError(ValueError):
 def _check_tail_mass(grid: ScoreGrid) -> None:
     """Assert the raw grid captures enough probability mass.
 
-    The 11x11 grid truncates at 10 goals per side. For normal lambdas this
-    loses < 1e-6 of mass. If lambdas are too high the tail becomes material
-    and all derived markets would be silently wrong.
+    The grid truncates at (N-1) goals per side. build_grid auto-widens to
+    16x16 when lambda > 3.0, so this check should rarely fire. It remains
+    as a safety net against truly extreme expectancies.
     """
     grid_sum = float(grid.grid.sum())
     tail_mass = 1.0 - grid_sum
@@ -61,7 +63,7 @@ def grid_to_markets(grid: ScoreGrid) -> dict:
     """
     _check_tail_mass(grid)
 
-    g = grid.grid  # (11, 11) numpy array
+    g = grid.grid  # (N, N) numpy array — typically 11x11 or 16x16
     n = g.shape[0]
 
     return {

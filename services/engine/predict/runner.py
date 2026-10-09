@@ -27,7 +27,7 @@ from db.models import (
 from services.engine.backtest.harness import _augment_params_with_fallback
 from services.engine.backtest.report import get_git_commit
 from services.engine.config.league_defaults import get_league_config
-from services.engine.markets.goals import GridTruncationError, grid_to_markets
+from services.engine.markets.goals import grid_to_markets
 from services.engine.models.decay import time_weights
 from services.engine.models.fit import fit_dixon_coles
 from services.engine.models.grid import build_grid
@@ -209,7 +209,6 @@ def run_predict(
 
         # 8. Predict each fixture
         n_predictions = 0
-        skipped = 0
         for match in fixtures:
             home_team = session.get(Team, match.home_team_id)
             away_team = session.get(Team, match.away_team_id)
@@ -225,14 +224,7 @@ def run_predict(
                 logger.info("Fallback (league avg) for: %s", ", ".join(fallback))
 
             grid = build_grid(augmented, ht, at)
-            try:
-                markets = grid_to_markets(grid)
-            except GridTruncationError as exc:
-                logger.warning(
-                    "Skipping %s vs %s — grid truncation: %s", ht, at, exc,
-                )
-                skipped += 1
-                continue
+            markets = grid_to_markets(grid)
             confidence = compute_confidence(grid.home_win, grid.draw, grid.away_win)
             disagreement = check_scoreline_disagreement(grid)
 
