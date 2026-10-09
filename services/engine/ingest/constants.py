@@ -65,6 +65,26 @@ NO_CROWD_END = date(2021, 5, 17)  # Partial crowds returned from 17 May 2021
 PL_FD_COUK_CODE = "E0"
 PL_FD_ORG_CODE = 2021  # football-data.org competition ID
 
+# Bundesliga identifiers
+BL_FD_COUK_CODE = "D1"
+BL_FD_ORG_CODE = 2002  # football-data.org competition ID
+
+# La Liga identifiers
+LL_FD_COUK_CODE = "SP1"
+LL_FD_ORG_CODE = 2014  # football-data.org competition ID
+
+# Serie A identifiers
+SA_FD_COUK_CODE = "I1"
+SA_FD_ORG_CODE = 2019  # football-data.org competition ID
+
+# Ligue 1 identifiers
+L1_FD_COUK_CODE = "F1"
+L1_FD_ORG_CODE = 2015  # football-data.org competition ID
+
+# Championship identifiers
+CH_FD_COUK_CODE = "E1"
+CH_FD_ORG_CODE = 2016  # football-data.org competition ID
+
 # football-data.org status values
 FD_ORG_STATUS_FINISHED = "FINISHED"
 FD_ORG_STATUS_SCHEDULED = "SCHEDULED"

@@ -17,31 +17,34 @@ def run_seed() -> None:
         run_all_seeds(session)
 
 
-def run_csv_backfill() -> None:
-    """Backfill all season CSVs from football-data.co.uk."""
+def run_csv_backfill(
+    league_code: str | None = None,
+    offline: bool = False,
+) -> None:
+    """Backfill season CSVs from football-data.co.uk."""
     from services.engine.ingest.csv_loader import backfill_all_seasons
 
     config = IngestConfig()
     with get_session(config) as session:
-        backfill_all_seasons(session, config)
+        backfill_all_seasons(session, config, league_code=league_code, offline=offline)
 
 
-def run_fixtures_sync() -> None:
+def run_fixtures_sync(league_code: str | None = None) -> None:
     """Sync upcoming fixtures from football-data.org."""
     from services.engine.ingest.fixtures_loader import sync_fixtures
 
     config = IngestConfig()
     with get_session(config) as session:
-        sync_fixtures(session, config)
+        sync_fixtures(session, config, league_code=league_code)
 
 
-def run_verify_ingest() -> bool:
-    """Run quality checks on all ingested data. Returns True if all pass."""
+def run_verify_ingest(league_code: str | None = None) -> bool:
+    """Run quality checks on ingested data. Returns True if all pass."""
     from services.engine.ingest.quality import verify_all_seasons
 
     config = IngestConfig()
     with get_session(config) as session:
-        reports = verify_all_seasons(session)
+        reports = verify_all_seasons(session, league_code=league_code)
 
     all_passed = all(r.passed for r in reports)
     total = sum(r.match_count for r in reports)

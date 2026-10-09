@@ -129,17 +129,17 @@ case "${1:-help}" in
 
     csv-backfill)
         echo "Running CSV backfill..."
-        docker compose exec worker python -m services.engine.ingest csv-backfill
+        docker compose exec worker python -m services.engine.ingest csv-backfill "${@:2}"
         ;;
 
     fixtures-sync)
         echo "Syncing fixtures from football-data.org..."
-        docker compose exec worker python -m services.engine.ingest fixtures-sync
+        docker compose exec worker python -m services.engine.ingest fixtures-sync "${@:2}"
         ;;
 
     verify-ingest)
         echo "Running ingest verification..."
-        docker compose exec worker python -m services.engine.ingest verify-ingest
+        docker compose exec worker python -m services.engine.ingest verify-ingest "${@:2}"
         ;;
 
     aliases)
@@ -155,6 +155,18 @@ case "${1:-help}" in
                 echo "Usage: ./run.sh aliases [review|confirm --source X --raw-name Y --team Z]"
                 ;;
         esac
+        ;;
+
+    daily)
+        echo "=== Daily pipeline: fixtures-sync → predict ==="
+        echo ""
+        echo "Step 1/2: Syncing fixtures from football-data.org..."
+        docker compose exec worker python -m services.engine.ingest fixtures-sync "${@:2}"
+        echo ""
+        echo "Step 2/2: Running predictions for all active leagues..."
+        docker compose exec worker python -m services.engine.predict run --all-active
+        echo ""
+        echo "=== Daily pipeline complete ==="
         ;;
 
     clean)
@@ -188,6 +200,7 @@ case "${1:-help}" in
         echo "  fixtures-sync  Sync upcoming fixtures from football-data.org"
         echo "  verify-ingest  Run quality checks on ingested data"
         echo "  aliases        Review/confirm team aliases"
+        echo "  daily          Sync fixtures + predict (run on hotspot/home Wi-Fi)"
         echo "  clean          Stop services and remove volumes"
         echo "  help           Show this help message"
         ;;

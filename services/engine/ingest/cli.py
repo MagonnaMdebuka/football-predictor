@@ -29,31 +29,37 @@ def seed_cmd():
 
 
 @ingest.command("csv-backfill")
-def csv_backfill_cmd():
+@click.option("--league", default=None, help="League code (e.g. E0, D1). Default: all active leagues.")
+@click.option("--offline", is_flag=True, default=False, help="Skip downloads, use cached CSVs only.")
+def csv_backfill_cmd(league: str | None, offline: bool):
     """Backfill season CSVs from football-data.co.uk."""
     from services.engine.ingest.runner import run_csv_backfill
 
-    click.echo("Starting CSV backfill...")
-    run_csv_backfill()
+    label = league or "all leagues"
+    click.echo(f"Starting CSV backfill for {label}{'  [offline]' if offline else ''}...")
+    run_csv_backfill(league_code=league, offline=offline)
     click.echo("CSV backfill complete.")
 
 
 @ingest.command("fixtures-sync")
-def fixtures_sync_cmd():
+@click.option("--league", default=None, help="League code (e.g. E0, D1). Default: all active leagues.")
+def fixtures_sync_cmd(league: str | None):
     """Sync upcoming fixtures from football-data.org."""
     from services.engine.ingest.runner import run_fixtures_sync
 
-    click.echo("Syncing fixtures from football-data.org...")
-    run_fixtures_sync()
+    label = league or "all active leagues"
+    click.echo(f"Syncing fixtures from football-data.org for {label}...")
+    run_fixtures_sync(league_code=league)
     click.echo("Fixture sync complete.")
 
 
 @ingest.command("verify-ingest")
-def verify_ingest_cmd():
+@click.option("--league", default=None, help="League code (e.g. E0, D1). Default: all active leagues.")
+def verify_ingest_cmd(league: str | None):
     """Run quality checks on ingested data."""
     from services.engine.ingest.runner import run_verify_ingest
 
-    passed = run_verify_ingest()
+    passed = run_verify_ingest(league_code=league)
     sys.exit(0 if passed else 1)
 
 

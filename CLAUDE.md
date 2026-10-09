@@ -55,9 +55,10 @@ run.sh                 Task runner (replaces Makefile)
 ./run.sh backtest-summary # Print summary of a backtest JSON report
 ./run.sh backtest-compare # Compare two reports for byte-identical output
 ./run.sh calibrate        # Bootstrap calibration from backtest
-./run.sh csv-backfill     # Backfill CSV data
-./run.sh fixtures-sync    # Sync upcoming fixtures
+./run.sh csv-backfill     # Backfill CSV data (--league E0, --offline)
+./run.sh fixtures-sync    # Sync upcoming fixtures (--league E0 or all)
 ./run.sh seed             # Seed leagues, seasons, aliases
-./run.sh verify-ingest    # Run quality checks
+./run.sh verify-ingest    # Run quality checks (--league E0 or all)
 ./run.sh aliases          # Review/confirm team aliases
+./run.sh daily            # fixtures-sync + predict --all-active
 ```

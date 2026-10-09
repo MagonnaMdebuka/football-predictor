@@ -14,8 +14,6 @@ from db.models import League, Match, Season
 
 logger = logging.getLogger(__name__)
 
-EXPECTED_MATCHES_PER_SEASON = 380
-EXPECTED_TEAMS_PER_SEASON = 20
 MAX_NULL_RATE = 0.05  # 5% null rate threshold for stat columns
 
 
@@ -38,8 +36,18 @@ def verify_season(
     season_id: int,
     season_label: str,
     is_current: bool = False,
+    expected_teams: int = 20,
+    expected_matches: int | None = None,
 ) -> QualityReport:
-    """Run quality checks on a single season. Returns a QualityReport."""
+    """Run quality checks on a single season. Returns a QualityReport.
+
+    Args:
+        expected_teams: number of teams in the league (default 20).
+        expected_matches: expected match count. Derived from expected_teams if not given.
+    """
+    if expected_matches is None:
+        expected_matches = expected_teams * (expected_teams - 1)
+
     report = QualityReport(season_label=season_label)
 
     # Match count
@@ -50,16 +58,7 @@ def verify_season(
         or 0
     )
 
-    if not is_current:
-        if report.match_count != EXPECTED_MATCHES_PER_SEASON:
-            report.errors.append(
-                f"Expected {EXPECTED_MATCHES_PER_SEASON} matches, found {report.match_count}"
-            )
-    else:
-        if report.match_count == 0:
-            report.errors.append("No matches found for current season")
-
-    # Team count
+    # Team count (computed first so we can use it in match-count validation)
     home_teams = (
         session.query(distinct(Match.home_team_id))
         .filter_by(league_id=league_id, season_id=season_id)
@@ -72,11 +71,24 @@ def verify_season(
     )
     report.team_count = max(home_teams, away_teams)
 
+    # Self-consistent: actual matches == teams * (teams - 1) for a round-robin
+    self_consistent_matches = report.team_count * (report.team_count - 1)
+    self_consistent = (
+        report.match_count == self_consistent_matches and report.team_count > 0
+    )
+
     if not is_current:
-        if report.team_count != EXPECTED_TEAMS_PER_SEASON:
+        if report.match_count != expected_matches and not self_consistent:
             report.errors.append(
-                f"Expected {EXPECTED_TEAMS_PER_SEASON} teams, found {report.team_count}"
+                f"Expected {expected_matches} matches, found {report.match_count}"
             )
+        if report.team_count != expected_teams and not self_consistent:
+            report.errors.append(
+                f"Expected {expected_teams} teams, found {report.team_count}"
+            )
+    else:
+        if report.match_count == 0:
+            report.errors.append("No matches found for current season")
 
     # Stat consistency: shots on target <= shots
     if report.match_count > 0:
@@ -161,34 +173,68 @@ def verify_season(
     return report
 
 
-def verify_all_seasons(session: Session) -> list[QualityReport]:
-    """Run quality checks on all seasons. Returns list of QualityReports."""
+def verify_all_seasons(
+    session: Session,
+    league_code: str | None = None,
+) -> list[QualityReport]:
+    """Run quality checks on seasons. Returns list of QualityReports.
+
+    Args:
+        league_code: specific league code (e.g. "D1"). None = all active leagues.
+    """
+    from services.engine.config.league_defaults import LEAGUE_CONFIGS
     from services.engine.ingest.csv_loader import _is_current_season
 
-    league = session.query(League).filter_by(fd_couk_code="E0").first()
-    if not league:
-        logger.error("Premier League not found")
+    if league_code:
+        leagues = session.query(League).filter_by(fd_couk_code=league_code, is_active=True).all()
+    else:
+        leagues = (
+            session.query(League)
+            .filter(League.fd_couk_code.isnot(None), League.is_active.is_(True))
+            .all()
+        )
+
+    if not leagues:
+        logger.error("No leagues found for verification")
         return []
 
-    seasons = session.query(Season).filter_by(league_id=league.id).order_by(Season.label).all()
     reports: list[QualityReport] = []
 
-    total_matches = 0
-    for season in seasons:
-        is_current = _is_current_season(season.label)
-        report = verify_season(session, league.id, season.id, season.label, is_current)
-        reports.append(report)
-        total_matches += report.match_count
+    for league in leagues:
+        code = league.fd_couk_code
+        lc = LEAGUE_CONFIGS.get(code)
+        expected_teams = lc.num_teams if lc else 20
 
-        status = "PASS" if report.passed else "FAIL"
-        logger.info(
-            "Season %s: %s (%d matches, %d teams)",
-            season.label, status, report.match_count, report.team_count,
+        seasons = (
+            session.query(Season)
+            .filter_by(league_id=league.id)
+            .order_by(Season.label)
+            .all()
         )
-        for err in report.errors:
-            logger.error("  ERROR: %s", err)
-        for warn in report.warnings:
-            logger.warning("  WARN: %s", warn)
 
-    logger.info("Total matches across all seasons: %d", total_matches)
+        logger.info("Verifying %s (%s) — %d seasons", league.name, code, len(seasons))
+
+        total_matches = 0
+        for season in seasons:
+            is_current = _is_current_season(season.label)
+            report = verify_season(
+                session, league.id, season.id, season.label,
+                is_current=is_current,
+                expected_teams=expected_teams,
+            )
+            reports.append(report)
+            total_matches += report.match_count
+
+            status = "PASS" if report.passed else "FAIL"
+            logger.info(
+                "[%s] Season %s: %s (%d matches, %d teams)",
+                code, season.label, status, report.match_count, report.team_count,
+            )
+            for err in report.errors:
+                logger.error("  ERROR: %s", err)
+            for warn in report.warnings:
+                logger.warning("  WARN: %s", warn)
+
+        logger.info("[%s] Total matches: %d", code, total_matches)
+
     return reports

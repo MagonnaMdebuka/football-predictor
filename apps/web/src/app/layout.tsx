@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { NavLinks } from "@/components/nav-links";
+import { getLeagues } from "@/lib/api";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,11 +9,18 @@ export const metadata: Metadata = {
   description: "Football match prediction platform powered by Dixon-Coles",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  let leagues: { code: string; name: string }[] = [];
+  try {
+    leagues = (await getLeagues()).map((l) => ({ code: l.code, name: l.name }));
+  } catch {
+    leagues = [];
+  }
+
   return (
     <html lang="en" className="dark">
       <body className="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col">
@@ -21,7 +29,7 @@ export default function RootLayout({
             <Link href="/" className="text-lg font-bold text-zinc-100 hover:text-white">
               Football Predictor
             </Link>
-            <NavLinks />
+            <NavLinks leagues={leagues} />
           </div>
         </nav>
 

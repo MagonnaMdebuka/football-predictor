@@ -1,12 +1,10 @@
-"""Tests for quality checks: 380-match check, goals/shots consistency, no negatives, null rate."""
+"""Tests for quality checks: match count, goals/shots consistency, no negatives, null rate."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from services.engine.ingest.quality import (
-    EXPECTED_MATCHES_PER_SEASON,
-    EXPECTED_TEAMS_PER_SEASON,
     QualityReport,
     verify_season,
 )

@@ -164,6 +164,8 @@ def load_season_csv(
     league_id: int,
     season_id: int,
     resolver: AliasResolver,
+    division: str = "E0",
+    offline: bool = False,
 ) -> tuple[int, int]:
     """Load a single season CSV. Returns (rows_written, rows_skipped)."""
     season_code = SEASON_CODES.get(season_label)
@@ -171,10 +173,15 @@ def load_season_csv(
         logger.error("Unknown season: %s", season_label)
         return 0, 0
 
-    # Download / use cache (re-download current season)
-    cache = _cache_path(config, season_label)
-    if _is_current_season(season_label) or not cache.exists():
-        file_path = _download_csv(config, season_label, season_code)
+    cache = _cache_path(config, season_label, division)
+
+    if offline:
+        if not cache.exists():
+            logger.warning("Offline: no cached CSV for %s %s — skipping", division, season_label)
+            return 0, 0
+        file_path = cache
+    elif _is_current_season(season_label) or not cache.exists():
+        file_path = _download_csv(config, season_label, season_code, division)
     else:
         file_path = cache
 
@@ -212,18 +219,16 @@ def load_season_csv(
     return written, skipped
 
 
-def backfill_all_seasons(session: Session, config: IngestConfig | None = None) -> None:
-    """Backfill all configured seasons from football-data.co.uk."""
-    if config is None:
-        config = IngestConfig()
+def _backfill_league(
+    session: Session,
+    config: IngestConfig,
+    league: Any,
+    offline: bool = False,
+) -> tuple[int, int]:
+    """Backfill all seasons for a single league. Returns (total_written, total_skipped)."""
+    from db.models import Season
 
-    from db.models import League, Season
-
-    league = session.query(League).filter_by(fd_couk_code="E0").first()
-    if not league:
-        logger.error("Premier League not found — run seed first")
-        return
-
+    division = league.fd_couk_code
     seasons = {s.label: s for s in session.query(Season).filter_by(league_id=league.id).all()}
     resolver = AliasResolver.from_session(session, config)
 
@@ -233,17 +238,21 @@ def backfill_all_seasons(session: Session, config: IngestConfig | None = None) -
     for season_label in SEASON_CODES:
         season = seasons.get(season_label)
         if not season:
-            logger.warning("Season %s not found in DB — skipping", season_label)
+            logger.warning("[%s] Season %s not found in DB — skipping", division, season_label)
             continue
 
-        # Create ingest run record
-        run = IngestRun(source="fd_couk", job=f"csv_backfill_{season_label}", status="running")
+        run = IngestRun(
+            source="fd_couk",
+            job=f"csv_backfill_{division}_{season_label}",
+            status="running",
+        )
         session.add(run)
         session.flush()
 
         try:
             written, skipped = load_season_csv(
-                session, config, season_label, league.id, season.id, resolver
+                session, config, season_label, league.id, season.id, resolver,
+                division=division, offline=offline,
             )
             run.rows_written = written
             run.rows_skipped = skipped
@@ -257,10 +266,58 @@ def backfill_all_seasons(session: Session, config: IngestConfig | None = None) -
             run.error_message = str(exc)
             run.finished_at = datetime.now(timezone.utc)
             session.commit()
-            logger.error("Failed to load season %s: %s", season_label, exc)
+            logger.error("[%s] Failed to load season %s: %s", division, season_label, exc)
             raise
 
     logger.info(
-        "Backfill complete: %d written, %d skipped across %d seasons",
-        total_written, total_skipped, len(SEASON_CODES),
+        "[%s] Backfill: %d written, %d skipped across %d seasons",
+        division, total_written, total_skipped, len(seasons),
+    )
+    return total_written, total_skipped
+
+
+def backfill_all_seasons(
+    session: Session,
+    config: IngestConfig | None = None,
+    league_code: str | None = None,
+    offline: bool = False,
+) -> None:
+    """Backfill season CSVs from football-data.co.uk.
+
+    Args:
+        league_code: specific league code (e.g. "D1"). None = all active leagues.
+        offline: skip downloads, use cached CSVs only.
+    """
+    if config is None:
+        config = IngestConfig()
+
+    from db.models import League
+
+    if league_code:
+        leagues = session.query(League).filter_by(fd_couk_code=league_code, is_active=True).all()
+        if not leagues:
+            logger.error("League %s not found — run seed first", league_code)
+            return
+    else:
+        leagues = (
+            session.query(League)
+            .filter(League.fd_couk_code.isnot(None), League.is_active.is_(True))
+            .all()
+        )
+        if not leagues:
+            logger.error("No active leagues found — run seed first")
+            return
+
+    grand_written = 0
+    grand_skipped = 0
+
+    for league in leagues:
+        logger.info("Backfilling %s (%s)...", league.name, league.fd_couk_code)
+        written, skipped = _backfill_league(session, config, league, offline=offline)
+        grand_written += written
+        grand_skipped += skipped
+
+    logger.info(
+        "Backfill complete: %d written, %d skipped across %d league(s)",
+        grand_written, grand_skipped, len(leagues),
     )

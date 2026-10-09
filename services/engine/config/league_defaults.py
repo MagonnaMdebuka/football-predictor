@@ -30,6 +30,7 @@ class LeagueConfig:
     league_code: str
     league_name: str
     xi: float
+    num_teams: int = 20
     rho_bounds: tuple[float, float] = (-0.5, 0.5)
     max_goals: int = 11
     training_start_season: str = "2019-20"
@@ -50,6 +51,52 @@ LEAGUE_CONFIGS: dict[str, LeagueConfig] = {
         league_code="E0",
         league_name="Premier League",
         xi=0.0065,
+        num_teams=20,
+        has_corners=True,
+        has_cards=True,
+        has_halves=True,
+    ),
+    "D1": LeagueConfig(
+        league_code="D1",
+        league_name="Bundesliga",
+        xi=0.0065,
+        num_teams=18,
+        has_corners=True,
+        has_cards=True,
+        has_halves=True,
+    ),
+    "SP1": LeagueConfig(
+        league_code="SP1",
+        league_name="La Liga",
+        xi=0.0065,
+        num_teams=20,
+        has_corners=True,
+        has_cards=True,
+        has_halves=True,
+    ),
+    "I1": LeagueConfig(
+        league_code="I1",
+        league_name="Serie A",
+        xi=0.0065,
+        num_teams=20,
+        has_corners=True,
+        has_cards=True,
+        has_halves=True,
+    ),
+    "F1": LeagueConfig(
+        league_code="F1",
+        league_name="Ligue 1",
+        xi=0.0065,
+        num_teams=18,
+        has_corners=True,
+        has_cards=True,
+        has_halves=True,
+    ),
+    "E1": LeagueConfig(
+        league_code="E1",
+        league_name="Championship",
+        xi=0.0065,
+        num_teams=24,
         has_corners=True,
         has_cards=True,
         has_halves=True,

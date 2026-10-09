@@ -10,8 +10,18 @@ from sqlalchemy.orm import Session
 
 from db.models import League, Season, Team, TeamAlias
 from services.engine.ingest.constants import (
+    BL_FD_COUK_CODE,
+    BL_FD_ORG_CODE,
+    CH_FD_COUK_CODE,
+    CH_FD_ORG_CODE,
+    L1_FD_COUK_CODE,
+    L1_FD_ORG_CODE,
+    LL_FD_COUK_CODE,
+    LL_FD_ORG_CODE,
     PL_FD_COUK_CODE,
     PL_FD_ORG_CODE,
+    SA_FD_COUK_CODE,
+    SA_FD_ORG_CODE,
     SEASON_DATES,
 )
 
@@ -20,35 +30,134 @@ logger = logging.getLogger(__name__)
 SEEDS_DIR = Path(__file__).resolve().parents[3] / "db" / "seeds"
 
 
-def seed_premier_league(session: Session) -> League:
-    """Upsert the Premier League row and return it."""
-    stmt = (
-        insert(League)
-        .values(
-            name="Premier League",
-            country="England",
-            tier=1,
-            is_active=True,
-            fd_couk_code=PL_FD_COUK_CODE,
-            fd_org_code=PL_FD_ORG_CODE,
-            has_corners=True,
-            has_cards=True,
-            ship_corners=False,
-            ship_cards=False,
-            has_xg=False,
-        )
-        .on_conflict_do_nothing()
-    )
-    session.execute(stmt)
-    session.flush()
+def seed_league(
+    session: Session,
+    *,
+    name: str,
+    country: str,
+    tier: int,
+    fd_couk_code: str,
+    fd_org_code: int,
+    has_corners: bool = False,
+    has_cards: bool = False,
+    ship_corners: bool = False,
+    ship_cards: bool = False,
+    has_xg: bool = False,
+) -> League:
+    """Upsert a league row and return it.
 
-    league = session.query(League).filter_by(name="Premier League").one()
-    logger.info("Premier League seeded (id=%d)", league.id)
+    Uses fd_couk_code as the natural key for idempotent inserts.
+    """
+    existing = session.query(League).filter_by(fd_couk_code=fd_couk_code).first()
+    if existing:
+        logger.info("%s already seeded (id=%d)", name, existing.id)
+        return existing
+
+    league = League(
+        name=name,
+        country=country,
+        tier=tier,
+        is_active=True,
+        fd_couk_code=fd_couk_code,
+        fd_org_code=fd_org_code,
+        has_corners=has_corners,
+        has_cards=has_cards,
+        ship_corners=ship_corners,
+        ship_cards=ship_cards,
+        has_xg=has_xg,
+    )
+    session.add(league)
+    session.flush()
+    logger.info("%s seeded (id=%d)", name, league.id)
     return league
 
 
+def seed_premier_league(session: Session) -> League:
+    """Upsert the Premier League row and return it."""
+    return seed_league(
+        session,
+        name="Premier League",
+        country="England",
+        tier=1,
+        fd_couk_code=PL_FD_COUK_CODE,
+        fd_org_code=PL_FD_ORG_CODE,
+        has_corners=True,
+        has_cards=True,
+    )
+
+
+def seed_bundesliga(session: Session) -> League:
+    """Upsert the Bundesliga row and return it."""
+    return seed_league(
+        session,
+        name="Bundesliga",
+        country="Germany",
+        tier=1,
+        fd_couk_code=BL_FD_COUK_CODE,
+        fd_org_code=BL_FD_ORG_CODE,
+        has_corners=True,
+        has_cards=True,
+    )
+
+
+def seed_la_liga(session: Session) -> League:
+    """Upsert the La Liga row and return it."""
+    return seed_league(
+        session,
+        name="La Liga",
+        country="Spain",
+        tier=1,
+        fd_couk_code=LL_FD_COUK_CODE,
+        fd_org_code=LL_FD_ORG_CODE,
+        has_corners=True,
+        has_cards=True,
+    )
+
+
+def seed_serie_a(session: Session) -> League:
+    """Upsert the Serie A row and return it."""
+    return seed_league(
+        session,
+        name="Serie A",
+        country="Italy",
+        tier=1,
+        fd_couk_code=SA_FD_COUK_CODE,
+        fd_org_code=SA_FD_ORG_CODE,
+        has_corners=True,
+        has_cards=True,
+    )
+
+
+def seed_ligue_1(session: Session) -> League:
+    """Upsert the Ligue 1 row and return it."""
+    return seed_league(
+        session,
+        name="Ligue 1",
+        country="France",
+        tier=1,
+        fd_couk_code=L1_FD_COUK_CODE,
+        fd_org_code=L1_FD_ORG_CODE,
+        has_corners=True,
+        has_cards=True,
+    )
+
+
+def seed_championship(session: Session) -> League:
+    """Upsert the Championship row and return it."""
+    return seed_league(
+        session,
+        name="Championship",
+        country="England",
+        tier=2,
+        fd_couk_code=CH_FD_COUK_CODE,
+        fd_org_code=CH_FD_ORG_CODE,
+        has_corners=True,
+        has_cards=True,
+    )
+
+
 def seed_seasons(session: Session, league: League) -> dict[str, Season]:
-    """Upsert seasons for the Premier League. Returns {label: Season}."""
+    """Upsert seasons for a league. Returns {label: Season}."""
     seasons: dict[str, Season] = {}
     for label, (start_str, end_str) in SEASON_DATES.items():
         start = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -122,8 +231,24 @@ def seed_teams_and_aliases(session: Session) -> int:
 
 def run_all_seeds(session: Session) -> None:
     """Run all seed operations."""
-    league = seed_premier_league(session)
-    seed_seasons(session, league)
+    pl = seed_premier_league(session)
+    seed_seasons(session, pl)
+
+    bl = seed_bundesliga(session)
+    seed_seasons(session, bl)
+
+    ll = seed_la_liga(session)
+    seed_seasons(session, ll)
+
+    sa = seed_serie_a(session)
+    seed_seasons(session, sa)
+
+    l1 = seed_ligue_1(session)
+    seed_seasons(session, l1)
+
+    ch = seed_championship(session)
+    seed_seasons(session, ch)
+
     seed_teams_and_aliases(session)
     session.commit()
     logger.info("All seeds complete")

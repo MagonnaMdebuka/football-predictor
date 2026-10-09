@@ -83,17 +83,18 @@ def _map_status(fd_org_status: str) -> str:
 def fetch_fixtures(
     client: RateLimitedClient,
     config: IngestConfig,
+    competition_code: int = PL_FD_ORG_CODE,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> list[dict]:
-    """Fetch matches from football-data.org for the Premier League."""
+    """Fetch matches from football-data.org for a competition."""
     if date_from is None:
         date_from = datetime.now(timezone.utc) - timedelta(days=7)
     if date_to is None:
         date_to = datetime.now(timezone.utc) + timedelta(days=14)
 
     url = (
-        f"{config.football_data_org_base_url}/competitions/{PL_FD_ORG_CODE}/matches"
+        f"{config.football_data_org_base_url}/competitions/{competition_code}/matches"
         f"?dateFrom={date_from.strftime('%Y-%m-%d')}"
         f"&dateTo={date_to.strftime('%Y-%m-%d')}"
     )
@@ -109,25 +110,83 @@ def fetch_fixtures(
         if row:
             parsed.append(row)
 
-    logger.info("Fetched %d fixtures from football-data.org", len(parsed))
+    logger.info("Fetched %d fixtures from football-data.org (comp=%d)", len(parsed), competition_code)
     return parsed
 
 
 def sync_fixtures(
     session: Session,
     config: IngestConfig | None = None,
+    league_code: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> tuple[int, int]:
-    """Sync fixtures from football-data.org. Returns (written, skipped)."""
+    """Sync fixtures from football-data.org. Returns (written, skipped).
+
+    Args:
+        league_code: fd_couk_code (e.g. "E0"). If None, syncs all active leagues.
+    """
     if config is None:
         config = IngestConfig()
 
-    league = session.query(League).filter_by(fd_org_code=PL_FD_ORG_CODE).first()
+    if league_code is None:
+        return _sync_all_leagues(session, config, date_from, date_to)
+
+    league = (
+        session.query(League)
+        .filter_by(fd_couk_code=league_code, is_active=True)
+        .first()
+    )
     if not league:
-        logger.error("Premier League not found — run seed first")
+        logger.error("League %s not found — run seed first", league_code)
+        return 0, 0
+    if not league.fd_org_code:
+        logger.error("League %s has no fd_org_code", league_code)
         return 0, 0
 
+    return _sync_single_league(session, config, league, date_from, date_to)
+
+
+def _sync_all_leagues(
+    session: Session,
+    config: IngestConfig,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> tuple[int, int]:
+    """Sync fixtures for all active leagues. Returns total (written, skipped)."""
+    leagues = (
+        session.query(League)
+        .filter(League.fd_org_code.isnot(None), League.is_active.is_(True))
+        .order_by(League.fd_couk_code)
+        .all()
+    )
+    if not leagues:
+        logger.error("No active leagues with fd_org_code found")
+        return 0, 0
+
+    total_written = 0
+    total_skipped = 0
+    for league in leagues:
+        logger.info("Syncing fixtures for %s (%s)...", league.name, league.fd_couk_code)
+        w, s = _sync_single_league(session, config, league, date_from, date_to)
+        total_written += w
+        total_skipped += s
+
+    logger.info(
+        "All leagues synced: %d written, %d skipped across %d leagues",
+        total_written, total_skipped, len(leagues),
+    )
+    return total_written, total_skipped
+
+
+def _sync_single_league(
+    session: Session,
+    config: IngestConfig,
+    league: League,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> tuple[int, int]:
+    """Sync fixtures for a single league. Returns (written, skipped)."""
     seasons = {s.label: s for s in session.query(Season).filter_by(league_id=league.id).all()}
     resolver = AliasResolver.from_session(session, config)
 
@@ -138,7 +197,10 @@ def sync_fixtures(
 
     client = RateLimitedClient(config, source_name="football-data.org")
     try:
-        fixtures = fetch_fixtures(client, config, date_from, date_to)
+        fixtures = fetch_fixtures(
+            client, config, competition_code=league.fd_org_code,
+            date_from=date_from, date_to=date_to,
+        )
 
         written = 0
         skipped = 0
