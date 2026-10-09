@@ -16,13 +16,15 @@ import numpy as np
 
 
 def compress_grid(grid: np.ndarray) -> bytes:
-    """Compress an 11x11 score grid for DB storage."""
+    """Compress a score grid for DB storage."""
     return zlib.compress(grid.astype(np.float64).tobytes())
 
 
 def decompress_grid(data: bytes) -> np.ndarray:
-    """Decompress a stored grid back to an 11x11 float64 array."""
-    return np.frombuffer(zlib.decompress(data), dtype=np.float64).reshape(11, 11)
+    """Decompress a stored grid back to an NxN float64 array."""
+    flat = np.frombuffer(zlib.decompress(data), dtype=np.float64)
+    n = int(np.sqrt(flat.size))
+    return flat.reshape(n, n)
 
 
 # ── Fingerprint ───────────────────────────────────────────────────────
