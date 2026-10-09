@@ -43,13 +43,15 @@ def csv_backfill_cmd(league: str | None, offline: bool):
 
 @ingest.command("fixtures-sync")
 @click.option("--league", default=None, help="League code (e.g. E0, D1). Default: all active leagues.")
-def fixtures_sync_cmd(league: str | None):
+@click.option("--offline-fixtures", is_flag=True, default=False, help="Read from JSON files in data/fixtures/ instead of calling the API.")
+def fixtures_sync_cmd(league: str | None, offline_fixtures: bool):
     """Sync upcoming fixtures from football-data.org."""
     from services.engine.ingest.runner import run_fixtures_sync
 
     label = league or "all active leagues"
-    click.echo(f"Syncing fixtures from football-data.org for {label}...")
-    run_fixtures_sync(league_code=league)
+    mode = "offline JSON" if offline_fixtures else "football-data.org"
+    click.echo(f"Syncing fixtures from {mode} for {label}...")
+    run_fixtures_sync(league_code=league, offline=offline_fixtures)
     click.echo("Fixture sync complete.")
 
 

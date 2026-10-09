@@ -29,13 +29,16 @@ def run_csv_backfill(
         backfill_all_seasons(session, config, league_code=league_code, offline=offline)
 
 
-def run_fixtures_sync(league_code: str | None = None) -> None:
-    """Sync upcoming fixtures from football-data.org."""
+def run_fixtures_sync(
+    league_code: str | None = None,
+    offline: bool = False,
+) -> None:
+    """Sync upcoming fixtures from football-data.org (or offline JSON files)."""
     from services.engine.ingest.fixtures_loader import sync_fixtures
 
     config = IngestConfig()
     with get_session(config) as session:
-        sync_fixtures(session, config, league_code=league_code)
+        sync_fixtures(session, config, league_code=league_code, offline=offline)
 
 
 def run_verify_ingest(league_code: str | None = None) -> bool:
